@@ -1,13 +1,9 @@
 import Link from "next/link";
-import { Home, Dumbbell, Calendar, Users, Award, Settings } from "lucide-react";
+import { Home, Dumbbell } from "lucide-react";
 
 const menuItems = [
   { icon: Home, text: "Dashboard", href: "/" },
   { icon: Dumbbell, text: "Exercises", href: "/exercises" },
-  { icon: Calendar, text: "Workouts", href: "/workouts" },
-  { icon: Users, text: "Community", href: "/community" },
-  { icon: Award, text: "Achievements", href: "/achievements" },
-  { icon: Settings, text: "Settings", href: "/settings" },
 ];
 
 export default function Sidebar() {
