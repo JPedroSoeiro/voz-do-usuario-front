@@ -1,13 +1,16 @@
-import DashboardStats from "./_components/DashboardStats";
+import FeedbackStats from "./_components/FeedbackStats";
 import Header from "../Header";
 
-export default function DashboardPage() {
+export default function FeedbacksPage() {
   return (
     <div className="flex h-screen bg-gray-100">
       <div className="flex-1 flex flex-col overflow-hidden">
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-200 p-6">
+          <h2 className="text-xl font-bold mb-6 text-gray-800">
+            Todos os Feedbacks
+          </h2>
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
-            <DashboardStats />
+            <FeedbackStats />
           </div>
 
           <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2"></div>
