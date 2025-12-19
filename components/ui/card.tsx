@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { cn } from "@/src/lib/utils";
+import { cn } from "../../src/lib/utils";
 
 function Card({ className, ...props }: React.ComponentProps<"div">) {
   return (
@@ -12,6 +12,26 @@ function Card({ className, ...props }: React.ComponentProps<"div">) {
       )}
       {...props}
     />
+  );
+}
+
+function CardSeparator({
+  children,
+  className,
+}: {
+  children?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("relative flex items-center w-full py-2", className)}>
+      <div className="flex-grow border-t border-muted" />
+      {children && (
+        <span className="mx-4 text-xs font-medium text-muted-foreground uppercase bg-card px-1">
+          {children}
+        </span>
+      )}
+      <div className="flex-grow border-t border-muted" />
+    </div>
   );
 }
 
@@ -81,26 +101,6 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-const SeparatorWithText = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, children = "Ou", ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn("relative flex justify-center items-center py-4", className)}
-    {...props}
-  >
-    <div className="absolute inset-0 flex items-center">
-      <span className="w-full border-t border-gray-300" />
-    </div>
-
-    <div className="relative bg-white px-3 text-sm uppercase text-gray-500">
-      {children}
-    </div>
-  </div>
-));
-SeparatorWithText.displayName = "SeparatorWithText";
-
 export {
   Card,
   CardHeader,
@@ -109,5 +109,5 @@ export {
   CardAction,
   CardDescription,
   CardContent,
-  SeparatorWithText,
+  CardSeparator,
 };

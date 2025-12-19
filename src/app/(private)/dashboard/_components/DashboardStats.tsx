@@ -1,5 +1,5 @@
 import { Activity, Flame, Clock, TrendingUp } from "lucide-react";
-import { Button } from "../../../../components/ui/button";
+import { Button } from "@/components/ui/button";
 
 const stats = [
   {
