@@ -7,7 +7,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  SeparatorWithText,
+  CardSeparator,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,7 +28,7 @@ export function LoginForm({
         </CardHeader>
 
         <CardContent>
-          <SeparatorWithText />
+          <CardSeparator>ou</CardSeparator>
 
           <form>
             <div className="flex flex-col gap-6">

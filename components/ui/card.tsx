@@ -24,13 +24,13 @@ function CardSeparator({
 }) {
   return (
     <div className={cn("relative flex items-center w-full py-2", className)}>
-      <div className="flex-grow border-t border-muted" />
+      <div className="grow border-t border-muted" />
       {children && (
         <span className="mx-4 text-xs font-medium text-muted-foreground uppercase bg-card px-1">
           {children}
         </span>
       )}
-      <div className="flex-grow border-t border-muted" />
+      <div className="grow border-t border-muted" />
     </div>
   );
 }
