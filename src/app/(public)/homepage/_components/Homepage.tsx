@@ -5,6 +5,14 @@ import { Search, PlusCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -12,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Link from "next/link";
+import CreateFeedback from "./CreateFeedback";
 
 const initialStats = [
   {
@@ -120,6 +129,10 @@ export default function HomepageComponent() {
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("recent");
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 4;
 
   const filteredAndSortedStats = useMemo(() => {
     let result = initialStats.filter((stat) => {
@@ -127,11 +140,7 @@ export default function HomepageComponent() {
         .toLowerCase()
         .includes(searchTerm.toLowerCase());
       const matchesCategory =
-        categoryFilter === "all" ||
-        (categoryFilter === "Outro"
-          ? !["Funcionalidade", "Bug", "Melhoria"].includes(stat.category)
-          : stat.category === categoryFilter);
-
+        categoryFilter === "all" || stat.category === categoryFilter;
       return matchesSearch && matchesCategory;
     });
 
@@ -147,9 +156,22 @@ export default function HomepageComponent() {
     return result;
   }, [searchTerm, categoryFilter, sortOrder]);
 
+  const totalPages = Math.ceil(filteredAndSortedStats.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const currentItems = filteredAndSortedStats.slice(
+    startIndex,
+    startIndex + itemsPerPage
+  );
+
+  const handleFilterChange = (type: string, value: string) => {
+    if (type === "category") setCategoryFilter(value);
+    if (type === "sort") setSortOrder(value);
+    if (type === "search") setSearchTerm(value);
+    setCurrentPage(1);
+  };
+
   return (
     <div className="min-h-screen bg-blue-50 flex flex-col">
-      {/* Header mais fino (h-14 em vez de h-16) */}
       <header className="bg-white border-b w-full h-14 flex items-center justify-between px-6 shrink-0">
         <span className="text-lg font-extrabold text-black">
           Voz do Usuário
@@ -161,26 +183,24 @@ export default function HomepageComponent() {
         </Link>
       </header>
 
-      {/* Reduzi o pt-20 para pt-10 para ganhar espaço no topo */}
       <main className="flex-1 flex flex-col items-center pt-10 px-4">
         <div className="w-full max-w-2xl text-center space-y-4">
           <h1 className="text-4xl font-black text-gray-900 tracking-tight">
             Compartilhe seu Feedback
           </h1>
-          <p className="text-base text-gray-600 max-w-lg mx-auto leading-tight">
-            Ajude-nos a melhorar compartilhando suas ideias e reportando
-            problemas.
+          <p className="text-base text-gray-600 max-w-lg mx-auto">
+            Ajude-nos a melhorar compartilhando suas ideias.
           </p>
-
           <Button
             size="sm"
-            className="bg-blue-600 hover:bg-blue-700 gap-2 h-10 px-6 shadow-md"
+            onClick={() => setIsCreateOpen(true)}
+            className="bg-blue-600 hover:bg-blue-700 h-10 px-6 shadow-md"
           >
-            <PlusCircle className="h-4 w-4" />
-            Criar Feedback
+            <PlusCircle className="h-4 w-4 mr-2" /> Criar Feedback
           </Button>
         </div>
 
+        {/* Filtros ajeitados (50% input / 50% selects) */}
         <div className="w-full max-w-3xl mt-10 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 w-full">
             {/* Metade da esquerda: Input de Pesquisa */}
@@ -194,6 +214,7 @@ export default function HomepageComponent() {
               />
             </div>
 
+            {/* Metade da direita: Grid interno para os dois Selects */}
             <div className="grid grid-cols-2 gap-2">
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                 <SelectTrigger className="h-10 bg-white text-sm w-full">
@@ -220,16 +241,16 @@ export default function HomepageComponent() {
             </div>
           </div>
 
-          {/* Cards menores: gap-2 e p-3 em vez de p-5 */}
-          <div className="flex flex-col gap-2 pb-10">
-            {filteredAndSortedStats.map((stat) => (
+          {/* Lista de Feedbacks (Limitada a 5) */}
+          <div className="flex flex-col gap-2 min-h-400px">
+            {currentItems.map((stat) => (
               <div
                 key={stat.id}
-                className="bg-white shadow-sm rounded-lg border border-gray-100 w-full p-3 hover:border-blue-300 transition-all"
+                className="bg-white shadow-sm rounded-lg border border-gray-100 p-3 hover:border-blue-300 transition-all"
               >
                 <div className="flex justify-between items-center">
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-bold text-gray-900 leading-tight">
+                    <span className="text-sm font-bold text-gray-900">
                       {stat.name}
                     </span>
                     <div className="flex items-center gap-2 text-[10px] text-gray-500">
@@ -240,9 +261,7 @@ export default function HomepageComponent() {
                       <span className="capitalize">{stat.status}</span>
                     </div>
                   </div>
-
-                  {/* Box de votos reduzido */}
-                  <div className="flex flex-col items-center bg-gray-50 px-3 py-1 rounded border border-gray-100 min-w-60px">
+                  <div className="flex flex-col items-center bg-gray-50 px-3 py-1 rounded border min-w-60px">
                     <span className="text-md font-bold text-blue-600 leading-none">
                       {stat.votes}
                     </span>
@@ -254,7 +273,69 @@ export default function HomepageComponent() {
               </div>
             ))}
           </div>
+
+          {/* Paginação Dinâmica */}
+          {totalPages > 1 && (
+            <div className="py-6">
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (currentPage > 1) setCurrentPage(currentPage - 1);
+                      }}
+                      className={
+                        currentPage === 1
+                          ? "pointer-events-none opacity-50"
+                          : "cursor-pointer"
+                      }
+                    />
+                  </PaginationItem>
+
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                    (page) => (
+                      <PaginationItem key={page}>
+                        <PaginationLink
+                          href="#"
+                          isActive={currentPage === page}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setCurrentPage(page);
+                          }}
+                          className="cursor-pointer"
+                        >
+                          {page}
+                        </PaginationLink>
+                      </PaginationItem>
+                    )
+                  )}
+
+                  <PaginationItem>
+                    <PaginationNext
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (currentPage < totalPages)
+                          setCurrentPage(currentPage + 1);
+                      }}
+                      className={
+                        currentPage === totalPages
+                          ? "pointer-events-none opacity-50"
+                          : "cursor-pointer"
+                      }
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            </div>
+          )}
         </div>
+        <CreateFeedback
+          isOpen={isCreateOpen}
+          onClose={() => setIsCreateOpen(false)}
+        />
       </main>
     </div>
   );
