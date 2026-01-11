@@ -39,13 +39,14 @@ export default function CreateFeedback({
 
   const handleCreate = () => {
     console.log("Feedback Criado:", formData);
+    // Aqui virá a chamada API
     setFormData({ name: "", email: "", category: "Melhoria", description: "" });
     onClose();
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-500px border-none">
+      <DialogContent className="sm:max-w-500px border-none bg-white text-black">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">
             Criar Novo Feedback
