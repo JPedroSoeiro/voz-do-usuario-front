@@ -2,18 +2,18 @@ import axios from "axios";
 import { getSession } from "next-auth/react";
 
 export const api = axios.create({
-  // Garanta que esta porta é a mesma onde seu Backend (NestJS) está rodando
-  baseURL: "http://localhost:3001",
+  baseURL: "http://localhost:3001", // URL do seu Backend
 });
 
-// Interceptador: Roda antes de cada requisição sair do front
+// Interceptor: Antes de cada requisição, coloca o token
 api.interceptors.request.use(async (config) => {
-  // Busca a sessão atual do usuário
-  const session: any = await getSession();
+  const session = await getSession();
 
-  // Se o usuário estiver logado e tiver o token, injeta no cabeçalho
-  if (session?.id_token) {
-    config.headers.Authorization = `Bearer ${session.id_token}`;
+  // @ts-ignore
+  const token = session?.id_token; // O token que salvamos no [...nextauth]/route.ts
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
 
   return config;

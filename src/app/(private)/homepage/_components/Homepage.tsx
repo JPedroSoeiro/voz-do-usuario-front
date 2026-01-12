@@ -1,7 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Search, PlusCircle, LogOut, Lock, ThumbsUp, Mail } from "lucide-react"; // Importei Mail
+import {
+  Search,
+  PlusCircle,
+  LogOut,
+  Lock,
+  ThumbsUp,
+  Mail,
+  Edit,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -20,14 +29,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSession, signOut, signIn } from "next-auth/react";
+import { api } from "@/src/lib/api";
 import CreateFeedback from "./CreateFeedback";
-import { FeedbackService, Feedback } from "@/src/services/feedbacks";
+import EditFeedback from "./EditFeedback";
+import { FeedbackService } from "@/src/services/feedback";
+import { Feedback } from "@/src/types/feedback";
 
 export default function HomepageComponent() {
   const { data: session, status } = useSession();
 
-  // VERIFICA SE O USUÁRIO PRECISA CONFIRMAR EMAIL
-  // @ts-ignore: O erro vem do nosso route.ts customizado
+  // @ts-ignore
   const isPendingVerification =
     (session as any)?.error === "EMAIL_VERIFICATION_REQUIRED";
 
@@ -35,16 +46,20 @@ export default function HomepageComponent() {
   const [isLoading, setIsLoading] = useState(true);
   const [totalItems, setTotalItems] = useState(0);
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [showLoginAlert, setShowLoginAlert] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingFeedback, setEditingFeedback] = useState<Feedback | null>(null);
 
-  // Filtros
+  const [showLoginAlert, setShowLoginAlert] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortFilter, setSortFilter] = useState("date");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 4;
 
-  // Só consideramos autenticado se tiver sessão E NÃO tiver erro de verificação
   const isAuthenticated = status === "authenticated" && !isPendingVerification;
 
   const user =
@@ -56,66 +71,65 @@ export default function HomepageComponent() {
         }
       : null;
 
+  useEffect(() => {
+    if (isAuthenticated) {
+      api
+        .get("/auth/me")
+        .then((res: any) => setCurrentUserId(res.data.user.id))
+        .catch((err: any) => console.error(err));
+    } else {
+      setCurrentUserId(null);
+    }
+  }, [isAuthenticated]);
+
   const fetchFeedbacks = useCallback(async () => {
     if (status === "loading") return;
-
     setIsLoading(true);
     try {
-      const response: any = await FeedbackService.getAll(
+      const data = await FeedbackService.getAll(
         currentPage,
         categoryFilter,
+        statusFilter,
+        sortFilter,
         isAuthenticated
       );
-
-      // LOG DE DEPURAÇÃO (Para confirmar no console do navegador)
-      console.log("Dados recebidos:", response);
-
-      // CASO 1: Formato Autenticado (Backend retorna { items, total })
-      if (response.items && Array.isArray(response.items)) {
-        setFeedbacks(response.items);
-        setTotalItems(response.total || 0);
-      }
-      // CASO 2: Formato Padrão/Supabase (Backend retorna { data, count })
-      else if (response.data && Array.isArray(response.data)) {
-        setFeedbacks(response.data);
-        setTotalItems(response.count || 0);
-      }
-      // CASO 3: Formato Array Puro (Visitante)
-      else if (Array.isArray(response)) {
-        setFeedbacks(response);
-        setTotalItems(response.length);
-      }
+      setFeedbacks(data.items);
+      setTotalItems(data.total);
     } catch (error: any) {
-      console.error("Erro ao buscar feedbacks:", error);
-      // Fallback para visitante em caso de erro 401
       if (error.response?.status === 401 && isAuthenticated) {
         try {
-          const publicData: any = await FeedbackService.getAll(
+          const publicData = await FeedbackService.getAll(
             currentPage,
             categoryFilter,
+            statusFilter,
+            sortFilter,
             false
           );
-          if (publicData.items) setFeedbacks(publicData.items);
-          else if (Array.isArray(publicData)) setFeedbacks(publicData);
+          setFeedbacks(publicData.items);
+          setTotalItems(publicData.total);
         } catch (e) {}
       }
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, categoryFilter, isAuthenticated, status]);
+  }, [
+    currentPage,
+    categoryFilter,
+    statusFilter,
+    sortFilter,
+    isAuthenticated,
+    status,
+  ]);
 
   useEffect(() => {
     fetchFeedbacks();
   }, [fetchFeedbacks]);
 
-  // LÓGICA DE LIKE
   const handleVote = async (feedback: Feedback) => {
     if (!isAuthenticated) {
-      // Se estiver pendente, não mostra o alerta amarelo, pois o banner azul já estará na tela
       if (!isPendingVerification) setShowLoginAlert(true);
       return;
     }
-    // ... (restante da lógica de voto igual)
     const previousFeedbacks = [...feedbacks];
     const isLiking = !feedback.has_voted;
     setFeedbacks((prev) =>
@@ -137,9 +151,25 @@ export default function HomepageComponent() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("Tem certeza que deseja apagar este feedback?")) return;
+    try {
+      await FeedbackService.delete(id);
+      fetchFeedbacks();
+    } catch (error) {
+      alert("Erro ao apagar. Verifique o console.");
+    }
+  };
+
+  const handleEditClick = (feedback: Feedback) => {
+    setEditingFeedback(feedback);
+    setIsEditModalOpen(true);
+  };
+
   const handlePageChange = (page: number) => {
     if (!isAuthenticated && page > 1) {
       if (!isPendingVerification) setShowLoginAlert(true);
+      // Scroll para o topo para ver o alerta
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
@@ -147,6 +177,16 @@ export default function HomepageComponent() {
   };
 
   const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+  const getStatusLabel = (s: string) => {
+    const map: any = {
+      pending: "Pendente",
+      accepted: "Aceito",
+      done: "Concluído",
+      rejected: "Rejeitado",
+      in_progress: "Em Progresso",
+    };
+    return map[s] || s;
+  };
 
   return (
     <div className="min-h-screen bg-blue-50 flex flex-col">
@@ -175,26 +215,24 @@ export default function HomepageComponent() {
                 size="icon"
                 onClick={() => signOut({ callbackUrl: "/" })}
                 className="text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                title="Sair"
               >
                 <LogOut className="h-5 w-5" />
               </Button>
             </>
-          ) : // Se estiver pendente, mostra botão de sair para trocar de conta
-          isPendingVerification ? (
+          ) : isPendingVerification ? (
             <Button
               size="sm"
               variant="outline"
               onClick={() => signOut({ callbackUrl: "/" })}
             >
-              Sair / Trocar Conta
+              Sair
             </Button>
           ) : (
             <Button
               size="sm"
               onClick={() => signIn("google", { callbackUrl: "/" })}
             >
-              Fazer Login
+              Login
             </Button>
           )}
         </div>
@@ -202,43 +240,10 @@ export default function HomepageComponent() {
 
       <main className="flex-1 flex flex-col items-center pt-8 px-4 pb-20">
         <div className="w-full max-w-2xl text-center space-y-4 mb-8">
-          {/* --- BLOCO DE VERIFICAÇÃO DE EMAIL --- */}
+          {/* ALERTA DE EMAIL PENDENTE */}
           {isPendingVerification && (
             <div className="w-full bg-blue-100 border-l-4 border-blue-600 text-blue-900 p-6 rounded-md shadow-md mb-6 text-left">
-              <div className="flex items-start gap-4">
-                <div className="bg-blue-200 p-2 rounded-full">
-                  <Mail className="h-6 w-6 text-blue-700" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-bold">Confirme seu email</h3>
-                  <p className="mt-1 text-sm text-blue-800">
-                    Criamos sua conta com sucesso para{" "}
-                    <strong>{session?.user?.email}</strong>.
-                  </p>
-                  <p className="mt-2 text-sm">
-                    Enviamos um link de confirmação para sua caixa de entrada.
-                    Você precisa clicar nele antes de poder votar ou criar
-                    feedbacks.
-                  </p>
-                  <div className="mt-4 flex gap-3">
-                    <Button
-                      size="sm"
-                      className="bg-blue-600 hover:bg-blue-700"
-                      onClick={() => signIn("google", { callbackUrl: "/" })}
-                    >
-                      Já confirmei (Recarregar)
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => signOut({ callbackUrl: "/" })}
-                      className="text-blue-700 hover:bg-blue-200"
-                    >
-                      Sair
-                    </Button>
-                  </div>
-                </div>
-              </div>
+              Confirme seu email.
             </div>
           )}
 
@@ -246,7 +251,7 @@ export default function HomepageComponent() {
             Feedbacks da Comunidade
           </h1>
 
-          {/* ALERTA DE VISITANTE (Só aparece se NÃO estiver pendente de email) */}
+          {/* 👇 O ALERTA ESTAVA FALTANDO AQUI 👇 */}
           {showLoginAlert && !user && !isPendingVerification && (
             <div className="mx-auto max-w-md bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded shadow-md animate-in fade-in slide-in-from-top-4 text-left">
               <div className="flex items-start">
@@ -257,8 +262,8 @@ export default function HomepageComponent() {
                   <h3 className="text-sm font-bold text-yellow-800">
                     Acesso Restrito
                   </h3>
-                  <p className="mt-1 text-sm text-yellow-700">
-                    Faça login para interagir.
+                  <p className="text-sm text-yellow-700 mt-1">
+                    Faça login para postar ou curtir.
                   </p>
                   <Button
                     size="sm"
@@ -278,23 +283,28 @@ export default function HomepageComponent() {
             </div>
           )}
 
-          {/* Se estiver pendente, desabilita o botão de criar */}
           <Button
             onClick={() => {
-              if (isPendingVerification) return; // Não faz nada
-              !isAuthenticated ? setShowLoginAlert(true) : setIsModalOpen(true);
+              if (isPendingVerification) return;
+              !isAuthenticated
+                ? setShowLoginAlert(true)
+                : setIsCreateModalOpen(true);
             }}
             disabled={isPendingVerification}
-            className={`${
-              isPendingVerification ? "opacity-50 cursor-not-allowed" : ""
-            } bg-blue-600 hover:bg-blue-700 h-10 px-6 shadow-md`}
+            className="bg-blue-600 hover:bg-blue-700 h-10 px-6 shadow-md"
           >
             <PlusCircle className="h-4 w-4 mr-2" /> Criar Feedback
           </Button>
 
           <CreateFeedback
-            isOpen={isModalOpen}
-            onClose={() => setIsModalOpen(false)}
+            isOpen={isCreateModalOpen}
+            onClose={() => setIsCreateModalOpen(false)}
+            onSuccess={fetchFeedbacks}
+          />
+          <EditFeedback
+            isOpen={isEditModalOpen}
+            onClose={() => setIsEditModalOpen(false)}
+            feedback={editingFeedback}
             onSuccess={fetchFeedbacks}
           />
         </div>
@@ -308,30 +318,39 @@ export default function HomepageComponent() {
                 className="pl-10 h-10 bg-white text-sm w-full"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                disabled
               />
             </div>
-            {/* ... Restante do código (Filtros e Lista) igual ao anterior ... */}
-            {/* ... Apenas lembre que o botão de Like já está protegido pelo !isAuthenticated ... */}
-            <div className="grid grid-cols-2 gap-2 w-full">
+            <div className="grid grid-cols-3 gap-2 w-full">
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="w-full h-10 bg-white text-sm">
-                  <SelectValue placeholder="Categorias" />
+                <SelectTrigger className="w-full h-10 bg-white text-sm px-2">
+                  <SelectValue placeholder="Categ." />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas</SelectItem>
                   <SelectItem value="improvement">Melhoria</SelectItem>
-                  <SelectItem value="feature">Funcionalidade</SelectItem>
+                  <SelectItem value="feature">Func.</SelectItem>
                   <SelectItem value="bug">Bug</SelectItem>
                 </SelectContent>
               </Select>
-
-              <Select value="recent">
-                <SelectTrigger className="w-full h-10 bg-white text-sm">
-                  <SelectValue placeholder="Ordenar" />
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full h-10 bg-white text-sm px-2">
+                  <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="recent">Recentes</SelectItem>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="pending">Pendente</SelectItem>
+                  <SelectItem value="accepted">Aceito</SelectItem>
+                  <SelectItem value="done">Concluído</SelectItem>
+                  <SelectItem value="rejected">Rejeitado</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sortFilter} onValueChange={setSortFilter}>
+                <SelectTrigger className="w-full h-10 bg-white text-sm px-2">
+                  <SelectValue placeholder="Ordem" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="date">Recentes</SelectItem>
+                  <SelectItem value="votes">Mais Votados</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -340,64 +359,106 @@ export default function HomepageComponent() {
           <div className="flex flex-col gap-2 min-h-75">
             {isLoading ? (
               <div className="text-center py-10 text-gray-500">
-                Carregando feedbacks...
+                Carregando...
               </div>
             ) : feedbacks.length === 0 ? (
               <div className="text-center py-10 text-gray-500">
                 Nenhum feedback encontrado.
               </div>
             ) : (
-              feedbacks.map((stat) => (
-                <div
-                  key={stat.id}
-                  className="bg-white shadow-sm rounded-lg border border-gray-100 p-4 hover:border-blue-300 transition-all"
-                >
-                  <div className="flex justify-between items-center">
-                    <div className="flex flex-col gap-1">
-                      <span className="text-sm font-bold text-gray-900">
-                        {stat.title}
-                      </span>
-                      <div className="flex items-center gap-2 text-[10px] text-gray-500">
-                        <span className="font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded uppercase">
-                          {stat.category}
+              feedbacks.map((stat) => {
+                const isOwner = currentUserId === stat.user_id;
+                const isPending = stat.status === "pending";
+
+                return (
+                  <div
+                    key={stat.id}
+                    className="group bg-white shadow-sm rounded-lg border border-gray-100 p-4 hover:border-blue-300 transition-all"
+                  >
+                    <div className="flex justify-between items-center">
+                      <div className="flex flex-col gap-1 max-w-[70%]">
+                        <span
+                          className="text-sm font-bold text-gray-900 truncate"
+                          title={stat.title}
+                        >
+                          {stat.title}
                         </span>
-                        <span>•</span>
-                        <span className="capitalize">{stat.status}</span>
+                        <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                          <span className="font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded uppercase">
+                            {stat.category}
+                          </span>
+                          <span>•</span>
+                          <span className="capitalize text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">
+                            {getStatusLabel(stat.status)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        {isOwner && (
+                          <div className="flex items-center gap-1">
+                            {isPending ? (
+                              <>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8 text-blue-600 hover:bg-blue-50"
+                                  onClick={() => handleEditClick(stat)}
+                                  title="Editar"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8 text-red-600 hover:bg-red-50"
+                                  onClick={() => handleDelete(stat.id)}
+                                  title="Excluir"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </>
+                            ) : (
+                              <div
+                                title="Bloqueado"
+                                className="cursor-help p-1"
+                              >
+                                <Lock className="h-4 w-4 text-gray-300" />
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <button
+                          onClick={() => handleVote(stat)}
+                          disabled={isPendingVerification}
+                          className={`flex flex-col items-center px-3 py-1.5 rounded border min-w-15 transition-all ${
+                            stat.has_voted
+                              ? "bg-blue-50 border-blue-200 text-blue-600"
+                              : "bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100"
+                          } ${
+                            isPendingVerification
+                              ? "cursor-not-allowed opacity-60"
+                              : ""
+                          }`}
+                        >
+                          <ThumbsUp
+                            className={`h-5 w-5 mb-0.5 ${
+                              stat.has_voted ? "fill-blue-600" : ""
+                            }`}
+                          />
+                          <span className="text-[9px] uppercase font-bold tracking-tighter">
+                            {stat.votes}
+                          </span>
+                        </button>
                       </div>
                     </div>
-                    {/* Botão de Like protegido */}
-                    <button
-                      onClick={() => handleVote(stat)}
-                      disabled={isPendingVerification} // Bloqueia clique se pendente
-                      className={`flex flex-col items-center px-3 py-1.5 rounded border min-w-15 transition-all 
-                        ${
-                          stat.has_voted
-                            ? "bg-blue-50 border-blue-200 text-blue-600"
-                            : "bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100"
-                        }
-                        ${
-                          isPendingVerification
-                            ? "cursor-not-allowed opacity-60"
-                            : ""
-                        }
-                        `}
-                    >
-                      <ThumbsUp
-                        className={`h-5 w-5 mb-0.5 ${
-                          stat.has_voted ? "fill-blue-600" : ""
-                        }`}
-                      />
-                      <span className="text-[9px] uppercase font-bold tracking-tighter">
-                        {stat.votes}
-                      </span>
-                    </button>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 
-          {/* PAGINAÇÃO */}
           {totalPages > 1 && (
             <div className="py-4">
               <Pagination>
@@ -430,7 +491,6 @@ export default function HomepageComponent() {
                             !isAuthenticated && page > 1 ? "opacity-60" : ""
                           }`}
                         >
-                          {/* Se não autenticado (inclui pendente), mostra cadeado */}
                           {!isAuthenticated && page > 1 ? (
                             <Lock className="h-3 w-3" />
                           ) : (
