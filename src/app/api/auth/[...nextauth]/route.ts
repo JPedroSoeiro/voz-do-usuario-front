@@ -1,8 +1,10 @@
-import NextAuth from "next-auth";
+import NextAuth, { AuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import jwt from "jsonwebtoken";
+import axios from "axios";
 
-const handler = NextAuth({
+const BACKEND_URL = "http://localhost:3001";
+
+const authOptions: AuthOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -10,51 +12,87 @@ const handler = NextAuth({
     }),
   ],
   callbacks: {
-    async session({ session, token }) {
-      if (session) {
-        // Envia o nosso token forjado para o frontend
-        // @ts-ignore
-        session.accessToken = token.supabaseAccessToken;
-        if (session.user && token.sub) {
-          // @ts-ignore
-          session.user.id = token.sub;
-        }
-      }
-      return session;
-    },
     async jwt({ token, user, account }) {
-      // Executa apenas no login inicial
+      // Só roda no login inicial (quando tem account)
       if (account && user) {
-        // --- A FALSIFICAÇÃO ---
-        // Criamos um token manualmente, igual ao do Supabase
-        const payload = {
-          aud: "authenticated",
-          role: "authenticated",
-          sub: user.id || token.sub,
-          email: user.email,
-          app_metadata: { provider: "google", providers: ["google"] },
-          user_metadata: { avatar_url: user.image, full_name: user.name },
-          exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24, // 24 horas
-        };
+        // Senha secreta "determinística" (sempre a mesma para o mesmo email)
+        const secretPassword = `GoogleLogin@2026#${
+          user.email
+        }#${process.env.NEXTAUTH_SECRET?.slice(0, 5)}`;
 
         try {
-          // Usamos a sua chave "sb_secret" para assinar
-          const signedToken = jwt.sign(
-            payload,
-            process.env.SUPABASE_JWT_SECRET!
+          // 1. Tenta LOGIN direto
+          console.log(`Tentando login para: ${user.email}`);
+          const loginResponse = await axios.post(`${BACKEND_URL}/auth/login`, {
+            email: user.email,
+            password: secretPassword,
+          });
+
+          // CORREÇÃO AQUI: O token do Supabase fica dentro de 'session'
+          const dadosBackend = loginResponse.data;
+          const tokenReal =
+            dadosBackend.session?.access_token || dadosBackend.access_token;
+
+          if (tokenReal) {
+            token.apiToken = tokenReal;
+            token.error = null;
+          } else {
+            console.error(
+              "PERIGO: Backend respondeu 200 mas sem token na sessão!",
+              dadosBackend
+            );
+          }
+        } catch (loginError: any) {
+          console.log(
+            `Login falhou (${loginError.response?.status}). Tentando criar usuário...`
           );
 
-          token.supabaseAccessToken = signedToken;
-        } catch (error) {
-          console.error("Erro ao assinar token:", error);
+          try {
+            // 2. Se falhar, tenta REGISTRO
+            await axios.post(`${BACKEND_URL}/auth/register`, {
+              email: user.email,
+              password: secretPassword,
+              full_name: user.name || "Usuário Google",
+            });
+
+            // 3. Após registro, tenta LOGIN de novo para pegar o token
+            const retryLogin = await axios.post(`${BACKEND_URL}/auth/login`, {
+              email: user.email,
+              password: secretPassword,
+            });
+
+            // Pega o token da sessão novamente
+            const dadosRetry = retryLogin.data;
+            token.apiToken = dadosRetry.session?.access_token;
+            token.error = null;
+          } catch (regError: any) {
+            const status = regError.response?.status;
+
+            // Se o erro for 401/403 no registro, é porque precisa confirmar email
+            if (status === 401 || status === 403) {
+              token.apiToken = null;
+              token.error = "EMAIL_VERIFICATION_REQUIRED";
+            } else {
+              console.error("Erro fatal no registro:", regError.response?.data);
+            }
+          }
         }
       }
       return token;
     },
+
+    async session({ session, token }) {
+      // Passa o token para a sessão do React
+      // @ts-ignore
+      session.id_token = token.apiToken;
+      // @ts-ignore
+      session.error = token.error;
+      return session;
+    },
   },
-  pages: {
-    signIn: "/",
-  },
-});
+  secret: process.env.NEXTAUTH_SECRET,
+};
+
+const handler = NextAuth(authOptions);
 
 export { handler as GET, handler as POST };

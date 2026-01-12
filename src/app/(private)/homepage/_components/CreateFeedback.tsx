@@ -1,18 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -20,121 +19,128 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { api } from "@/src/lib/api";
 
 interface CreateFeedbackProps {
   isOpen: boolean;
   onClose: () => void;
+  onSuccess: () => void;
 }
 
 export default function CreateFeedback({
   isOpen,
   onClose,
+  onSuccess,
 }: CreateFeedbackProps) {
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    category: "Melhoria",
-    description: "",
-  });
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleCreate = () => {
-    console.log("Feedback Criado:", formData);
-    // Aqui virá a chamada API
-    setFormData({ name: "", email: "", category: "Melhoria", description: "" });
-    onClose();
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  // Começa com valor válido em inglês
+  const [category, setCategory] = useState("improvement");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Validação simples no Front antes de incomodar o Back
+    if (title.length < 3 || description.length < 3) {
+      alert("Título e descrição precisam ter no mínimo 3 caracteres.");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      // Enviamos para o backend.
+      // O 'category' já está em inglês por causa do <SelectItem value="..."> abaixo.
+      await api.post("/feedback", {
+        title,
+        description,
+        category,
+      });
+
+      // Limpa o form e avisa o pai
+      setTitle("");
+      setDescription("");
+      setCategory("improvement");
+      onSuccess(); // Atualiza a lista lá fora
+      onClose(); // Fecha o modal
+    } catch (error: any) {
+      console.error("Erro ao criar feedback:", error);
+      const msg =
+        error.response?.data?.error?.formErrors?.[0] ||
+        "Verifique os dados e tente novamente.";
+      alert(`Erro: ${msg}`);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-500px border-none bg-white text-black">
+      <DialogContent className="sm:max-w-500px bg-white text-black">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold">
-            Criar Novo Feedback
-          </DialogTitle>
+          <DialogTitle>Novo Feedback</DialogTitle>
           <DialogDescription>
-            Compartilhe sua ideia ou reporte um problema preenchendo os campos
-            abaixo.
+            Compartilhe sua ideia ou reporte um erro para a comunidade.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 py-4">
-          <div className="grid gap-2">
-            <Label htmlFor="email" className="text-sm font-semibold">
-              Seu E-mail
-            </Label>
+        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label htmlFor="title">Título</Label>
             <Input
-              id="email"
-              type="email"
-              placeholder="exemplo@email.com"
-              value={formData.email}
-              onChange={(e) =>
-                setFormData({ ...formData, email: e.target.value })
-              }
-              className="focus-visible:ring-blue-500"
+              id="title"
+              placeholder="Ex: Adicionar modo escuro"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+              minLength={3} // Ajuda visual do HTML5
             />
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="name" className="text-sm font-semibold">
-              Título do Feedback
-            </Label>
-            <Input
-              id="name"
-              placeholder="Resuma sua ideia..."
-              value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
-              className="focus-visible:ring-blue-500"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label className="text-sm font-semibold">Categoria</Label>
-            <Select
-              value={formData.category}
-              onValueChange={(v) => setFormData({ ...formData, category: v })}
-            >
-              <SelectTrigger className="h-10 bg-white">
-                <SelectValue placeholder="Selecione a categoria" />
+          <div className="space-y-2">
+            <Label htmlFor="category">Categoria</Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger id="category" className="bg-white">
+                <SelectValue placeholder="Selecione..." />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Funcionalidade">Funcionalidade</SelectItem>
-                <SelectItem value="Bug">Bug</SelectItem>
-                <SelectItem value="Melhoria">Melhoria</SelectItem>
-                <SelectItem value="Outro">Outro</SelectItem>
+                {/* O SEGREDO ESTÁ AQUI: O 'value' é inglês (pro backend), o texto é PT (pro usuário) */}
+                <SelectItem value="improvement">Melhoria</SelectItem>
+                <SelectItem value="feature">Funcionalidade Nova</SelectItem>
+                <SelectItem value="bug">Reportar Erro (Bug)</SelectItem>
+                <SelectItem value="other">Outro</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="description" className="text-sm font-semibold">
-              Descrição Detalhada
-            </Label>
+          <div className="space-y-2">
+            <Label htmlFor="description">Descrição Detalhada</Label>
             <Textarea
               id="description"
-              rows={4}
-              placeholder="Conte-nos mais detalhes..."
-              value={formData.description}
-              onChange={(e) =>
-                setFormData({ ...formData, description: e.target.value })
-              }
-              className="resize-none focus-visible:ring-blue-500 text-sm"
+              placeholder="Explique melhor sua ideia..."
+              className="resize-none h-32"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              required
+              minLength={3}
             />
           </div>
-        </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="ghost" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button
-            onClick={handleCreate}
-            className="bg-blue-600 hover:bg-blue-700 text-white shadow-md active:scale-95 px-8"
-          >
-            Enviar Feedback
-          </Button>
-        </DialogFooter>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              disabled={isLoading}
+            >
+              {isLoading ? "Enviando..." : "Publicar Feedback"}
+            </Button>
+          </div>
+        </form>
       </DialogContent>
     </Dialog>
   );
