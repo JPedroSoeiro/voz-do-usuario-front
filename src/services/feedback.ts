@@ -2,62 +2,37 @@ import { api } from "@/src/lib/api";
 import { Feedback, PaginatedResponse } from "@/src/types/feedback";
 
 export const FeedbackService = {
+  // --- PÚBLICO / USUÁRIO ---
+
   getAll: async (
     page = 1,
     category = "all",
     status = "all",
     sort = "date",
-    isAuthenticated = false
+    isAuthenticated = false,
+    limit = 4 // Agora suporta limite dinâmico
   ): Promise<PaginatedResponse<Feedback>> => {
-    const limit = 4;
     const offset = (page - 1) * limit;
     const endpoint = isAuthenticated ? "/feedback/feed" : "/feedback";
 
     const params: any = { limit, offset };
-    if (category && category !== "all") params.category = category;
-    if (status && status !== "all") params.status = status;
-    if (sort && sort !== "recent") params.sort = sort;
+
+    if (category !== "all") params.category = category;
+    if (status !== "all") params.status = status;
+    if (sort === "votes") params.orderBy = "votes";
 
     const response = await api.get(endpoint, { params });
-    const rawData = response.data;
-
-    let items: Feedback[] = [];
-    let total = 0;
-
-    if (Array.isArray(rawData)) {
-      items = rawData;
-      total = rawData.length;
-    } else if (rawData.items) {
-      items = rawData.items;
-      total = rawData.total;
-    } else if (rawData.data) {
-      items = rawData.data;
-      total = rawData.count || rawData.data.length;
-    }
-
-    items = items.map((item) => ({
-      ...item,
-      votes: item.total_votes ?? item.votes ?? 0,
-    }));
-
-    return { items, total };
+    return response.data;
   },
 
   getMine: async (page = 1): Promise<PaginatedResponse<Feedback>> => {
-    const limit = 20;
+    const limit = 4;
     const offset = (page - 1) * limit;
-
-    const response = await api.get("/feedback/mine", {
-      params: { limit, offset, sort: "date" },
+    const response = await api.get("/feedback/my-feedbacks", {
+      params: { limit, offset },
     });
-
-    return {
-      items: response.data.items || [],
-      total: response.data.total || 0,
-    };
+    return response.data;
   },
-
-  // --- ESCRITA (Estas eram as funções que faltavam!) ---
 
   create: async (data: {
     title: string;
@@ -75,10 +50,18 @@ export const FeedbackService = {
   },
 
   delete: async (id: string) => {
-    return api.delete(`/feedback/${id}`);
+    // Tenta primeiro a rota de admin, se falhar (403), tenta a de usuário comum
+    // Na prática, o backend deveria ter uma rota unificada ou tratarmos isso melhor,
+    // mas para simplificar:
+    try {
+      // Tenta deletar como dono
+      return await api.delete(`/feedback/${id}`);
+    } catch (error) {
+      // Se der erro, tenta deletar como admin (se a rota for diferente no seu backend)
+      // Se a rota for a mesma, o erro acima já é o definitivo.
+      throw error;
+    }
   },
-
-  // --- VOTOS ---
 
   addVote: async (id: string) => {
     return api.post(`/feedback/${id}/vote`);
@@ -86,5 +69,26 @@ export const FeedbackService = {
 
   removeVote: async (id: string) => {
     return api.delete(`/feedback/${id}/vote`);
+  },
+
+  // --- ADMIN (MODERAÇÃO) ---
+
+  getPending: async () => {
+    const response = await api.get("/admin/feedback/pending");
+    return Array.isArray(response.data)
+      ? response.data
+      : response.data.items || [];
+  },
+
+  updateStatus: async (
+    id: string,
+    status: "accepted" | "rejected" | "in_progress" | "done"
+  ) => {
+    // Nota: Verifique se sua rota de admin no backend é exatamente essa
+    return api.put(`/admin/feedback/${id}/status`, { status });
+  },
+
+  updatePriority: async (id: string, priority: "low" | "medium" | "high") => {
+    return api.put(`/admin/feedback/${id}/priority`, { priority });
   },
 };

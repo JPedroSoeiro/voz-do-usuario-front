@@ -2,7 +2,7 @@
 
 import { SessionProvider } from "next-auth/react";
 // Importamos o componente principal que tem toda a lógica (Lista + Login + Cadeados)
-import HomepageComponent from "@/src/app/(private)/homepage/_components/Homepage";
+import HomepageComponent from "@/src/app/(main)/homepage/_components/Homepage";
 
 export default function Home() {
   return (

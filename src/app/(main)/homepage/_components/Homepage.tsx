@@ -7,9 +7,10 @@ import {
   LogOut,
   Lock,
   ThumbsUp,
-  Mail,
   Edit,
   Trash2,
+  LayoutDashboard,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,19 @@ import CreateFeedback from "./CreateFeedback";
 import EditFeedback from "./EditFeedback";
 import { FeedbackService } from "@/src/services/feedback";
 import { Feedback } from "@/src/types/feedback";
+import { UserProfile } from "@/src/types/auth";
+
+// 👇 IMPORTAMOS O NOVO MODAL AQUI
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function HomepageComponent() {
   const { data: session, status } = useSession();
@@ -50,8 +64,11 @@ export default function HomepageComponent() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingFeedback, setEditingFeedback] = useState<Feedback | null>(null);
 
+  // 👇 ESTADO PARA CONTROLAR O DELETE (Guarda o ID que será apagado)
+  const [feedbackToDelete, setFeedbackToDelete] = useState<string | null>(null);
+
   const [showLoginAlert, setShowLoginAlert] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -62,7 +79,7 @@ export default function HomepageComponent() {
 
   const isAuthenticated = status === "authenticated" && !isPendingVerification;
 
-  const user =
+  const userDisplay =
     isAuthenticated && session?.user
       ? {
           name: session.user.name || "Usuário",
@@ -75,10 +92,10 @@ export default function HomepageComponent() {
     if (isAuthenticated) {
       api
         .get("/auth/me")
-        .then((res: any) => setCurrentUserId(res.data.user.id))
+        .then((res: any) => setCurrentUser(res.data.user))
         .catch((err: any) => console.error(err));
     } else {
-      setCurrentUserId(null);
+      setCurrentUser(null);
     }
   }, [isAuthenticated]);
 
@@ -151,13 +168,21 @@ export default function HomepageComponent() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Tem certeza que deseja apagar este feedback?")) return;
+  // 👇 CLIQUE NA LIXEIRA: Só abre o modal (não deleta ainda)
+  const handleDeleteClick = (id: string) => {
+    setFeedbackToDelete(id);
+  };
+
+  // 👇 CONFIRMAÇÃO DO MODAL: Aqui sim deleta
+  const confirmDelete = async () => {
+    if (!feedbackToDelete) return;
     try {
-      await FeedbackService.delete(id);
+      await FeedbackService.delete(feedbackToDelete);
       fetchFeedbacks();
     } catch (error) {
-      alert("Erro ao apagar. Verifique o console.");
+      alert("Erro ao apagar. Verifique se você ainda tem permissão.");
+    } finally {
+      setFeedbackToDelete(null); // Fecha o modal
     }
   };
 
@@ -169,7 +194,6 @@ export default function HomepageComponent() {
   const handlePageChange = (page: number) => {
     if (!isAuthenticated && page > 1) {
       if (!isPendingVerification) setShowLoginAlert(true);
-      // Scroll para o topo para ver o alerta
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
@@ -195,18 +219,30 @@ export default function HomepageComponent() {
           Voz do Usuário
         </span>
         <div className="flex items-center gap-4">
-          {user ? (
+          {userDisplay ? (
             <>
+              {currentUser?.role === "admin" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-blue-700 border-blue-200 bg-blue-50 hover:bg-blue-100 hidden sm:flex"
+                  onClick={() => (window.location.href = "/dashboard")}
+                >
+                  <LayoutDashboard className="h-4 w-4 mr-2" />
+                  Painel Admin
+                </Button>
+              )}
+
               <div className="flex items-center gap-3 bg-gray-50 rounded-full pl-1 pr-4 py-1.5 border border-gray-200">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white shadow-sm">
-                  {user.initial}
+                  {userDisplay.initial}
                 </div>
                 <div className="flex flex-col text-left">
                   <span className="text-xs font-bold text-gray-700 leading-none">
-                    {user.name}
+                    {userDisplay.name}
                   </span>
                   <span className="text-[10px] text-gray-500 leading-none mt-0.5 max-w-30 truncate hidden sm:block">
-                    {user.email}
+                    {userDisplay.email}
                   </span>
                 </div>
               </div>
@@ -240,7 +276,6 @@ export default function HomepageComponent() {
 
       <main className="flex-1 flex flex-col items-center pt-8 px-4 pb-20">
         <div className="w-full max-w-2xl text-center space-y-4 mb-8">
-          {/* ALERTA DE EMAIL PENDENTE */}
           {isPendingVerification && (
             <div className="w-full bg-blue-100 border-l-4 border-blue-600 text-blue-900 p-6 rounded-md shadow-md mb-6 text-left">
               Confirme seu email.
@@ -251,8 +286,7 @@ export default function HomepageComponent() {
             Feedbacks da Comunidade
           </h1>
 
-          {/* 👇 O ALERTA ESTAVA FALTANDO AQUI 👇 */}
-          {showLoginAlert && !user && !isPendingVerification && (
+          {showLoginAlert && !userDisplay && !isPendingVerification && (
             <div className="mx-auto max-w-md bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded shadow-md animate-in fade-in slide-in-from-top-4 text-left">
               <div className="flex items-start">
                 <div className="shrink-0">
@@ -307,6 +341,34 @@ export default function HomepageComponent() {
             feedback={editingFeedback}
             onSuccess={fetchFeedbacks}
           />
+
+          {/* 👇 AQUI ESTÁ O MODAL NOVO! */}
+          <AlertDialog
+            open={!!feedbackToDelete}
+            onOpenChange={() => setFeedbackToDelete(null)}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-600" />
+                  <AlertDialogTitle>Tem certeza absoluta?</AlertDialogTitle>
+                </div>
+                <AlertDialogDescription>
+                  Essa ação não pode ser desfeita. Isso excluirá permanentemente
+                  seu feedback e todos os votos serão perdidos.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={confirmDelete}
+                  className="bg-red-600 hover:bg-red-700 text-white focus:ring-red-600"
+                >
+                  Sim, excluir feedback
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
 
         <div className="w-full max-w-3xl space-y-4">
@@ -367,7 +429,7 @@ export default function HomepageComponent() {
               </div>
             ) : (
               feedbacks.map((stat) => {
-                const isOwner = currentUserId === stat.user_id;
+                const isOwner = currentUser?.id === stat.user_id;
                 const isPending = stat.status === "pending";
 
                 return (
@@ -408,11 +470,12 @@ export default function HomepageComponent() {
                                 >
                                   <Edit className="h-4 w-4" />
                                 </Button>
+                                {/* MUDANÇA: Agora chama a função que abre o modal */}
                                 <Button
                                   size="icon"
                                   variant="ghost"
                                   className="h-8 w-8 text-red-600 hover:bg-red-50"
-                                  onClick={() => handleDelete(stat.id)}
+                                  onClick={() => handleDeleteClick(stat.id)}
                                   title="Excluir"
                                 >
                                   <Trash2 className="h-4 w-4" />

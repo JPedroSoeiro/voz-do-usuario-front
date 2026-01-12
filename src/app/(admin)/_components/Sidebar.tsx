@@ -1,3 +1,5 @@
+"use client";
+
 import { Home, MessageSquare } from "lucide-react";
 import {
   Sidebar,
