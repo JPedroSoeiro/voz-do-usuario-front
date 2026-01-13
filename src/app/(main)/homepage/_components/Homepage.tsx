@@ -103,6 +103,7 @@ export default function HomepageComponent() {
     if (status === "loading") return;
     setIsLoading(true);
     try {
+      // Tenta buscar com o status atual de autenticação
       const data = await FeedbackService.getAll(
         currentPage,
         categoryFilter,
@@ -110,9 +111,14 @@ export default function HomepageComponent() {
         sortFilter,
         isAuthenticated
       );
-      setFeedbacks(data.items);
-      setTotalItems(data.total);
+
+      // CORREÇÃO: Usa "|| []" para garantir que nunca seja undefined
+      setFeedbacks(data.items || []);
+      setTotalItems(data.total || 0);
     } catch (error: any) {
+      console.error("Erro ao buscar:", error);
+
+      // Se der erro 401 (Não autorizado), tenta buscar como público (sem logar)
       if (error.response?.status === 401 && isAuthenticated) {
         try {
           const publicData = await FeedbackService.getAll(
@@ -120,11 +126,16 @@ export default function HomepageComponent() {
             categoryFilter,
             statusFilter,
             sortFilter,
-            false
+            false // Força false para buscar público
           );
-          setFeedbacks(publicData.items);
-          setTotalItems(publicData.total);
-        } catch (e) {}
+          setFeedbacks(publicData.items || []);
+          setTotalItems(publicData.total || 0);
+        } catch (e) {
+          setFeedbacks([]); // Se falhar tudo, lista vazia
+        }
+      } else {
+        // Outros erros
+        setFeedbacks([]);
       }
     } finally {
       setIsLoading(false);
@@ -420,10 +431,10 @@ export default function HomepageComponent() {
 
           <div className="flex flex-col gap-2 min-h-75">
             {isLoading ? (
-              <div className="text-center py-10 text-gray-500">
+              <div className="text-center py-10 text-blue-500">
                 Carregando...
               </div>
-            ) : feedbacks.length === 0 ? (
+            ) : (feedbacks || []).length === 0 ? ( // <--- CORREÇÃO: (feedbacks || [])
               <div className="text-center py-10 text-gray-500">
                 Nenhum feedback encontrado.
               </div>

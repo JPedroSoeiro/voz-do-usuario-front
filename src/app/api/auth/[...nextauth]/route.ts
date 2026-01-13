@@ -1,98 +1,82 @@
-import NextAuth, { AuthOptions } from "next-auth";
+import NextAuth, { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import axios from "axios";
+import CredentialsProvider from "next-auth/providers/credentials";
+import { api } from "@/src/lib/api";
 
-const BACKEND_URL = "http://localhost:3001";
-
-const authOptions: AuthOptions = {
+const authOptions: NextAuthOptions = {
   providers: [
+    // 1. Google: Para a Homepage (Usuários comuns)
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      clientId: process.env.GOOGLE_CLIENT_ID || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+    }),
+
+    // 2. Credenciais: EXCLUSIVO para o Admin (via login-admin)
+    CredentialsProvider({
+      name: "Admin Login",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Senha", type: "password" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) return null;
+
+        try {
+          // Chama seu backend para validar admin
+          const response = await api.post("/auth/login", {
+            email: credentials.email,
+            password: credentials.password,
+          });
+
+          const user = response.data;
+
+          // Só permite login se tiver token e for admin (opcional validar role aqui)
+          if (user && user.token) {
+            return {
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              role: user.role, // O backend deve retornar "admin"
+              token: user.token,
+            };
+          }
+          return null;
+        } catch (error) {
+          console.error("Falha no login admin:", error);
+          return null;
+        }
+      },
     }),
   ],
   callbacks: {
-    async jwt({ token, user, account }) {
-      // Só roda no login inicial (quando tem account)
-      if (account && user) {
-        // Senha secreta "determinística" (sempre a mesma para o mesmo email)
-        const secretPassword = `GoogleLogin@2026#${
-          user.email
-        }#${process.env.NEXTAUTH_SECRET?.slice(0, 5)}`;
-
-        try {
-          // 1. Tenta LOGIN direto
-          console.log(`Tentando login para: ${user.email}`);
-          const loginResponse = await axios.post(`${BACKEND_URL}/auth/login`, {
-            email: user.email,
-            password: secretPassword,
-          });
-
-          // CORREÇÃO AQUI: O token do Supabase fica dentro de 'session'
-          const dadosBackend = loginResponse.data;
-          const tokenReal =
-            dadosBackend.session?.access_token || dadosBackend.access_token;
-
-          if (tokenReal) {
-            token.apiToken = tokenReal;
-            token.error = null;
-          } else {
-            console.error(
-              "PERIGO: Backend respondeu 200 mas sem token na sessão!",
-              dadosBackend
-            );
-          }
-        } catch (loginError: any) {
-          console.log(
-            `Login falhou (${loginError.response?.status}). Tentando criar usuário...`
-          );
-
-          try {
-            // 2. Se falhar, tenta REGISTRO
-            await axios.post(`${BACKEND_URL}/auth/register`, {
-              email: user.email,
-              password: secretPassword,
-              full_name: user.name || "Usuário Google",
-            });
-
-            // 3. Após registro, tenta LOGIN de novo para pegar o token
-            const retryLogin = await axios.post(`${BACKEND_URL}/auth/login`, {
-              email: user.email,
-              password: secretPassword,
-            });
-
-            // Pega o token da sessão novamente
-            const dadosRetry = retryLogin.data;
-            token.apiToken = dadosRetry.session?.access_token;
-            token.error = null;
-          } catch (regError: any) {
-            const status = regError.response?.status;
-
-            // Se o erro for 401/403 no registro, é porque precisa confirmar email
-            if (status === 401 || status === 403) {
-              token.apiToken = null;
-              token.error = "EMAIL_VERIFICATION_REQUIRED";
-            } else {
-              console.error("Erro fatal no registro:", regError.response?.data);
-            }
-          }
-        }
+    async jwt({ token, user }: any) {
+      if (user) {
+        token.role = user.role;
+        token.id_token = user.token;
+        token.id = user.id;
       }
       return token;
     },
-
-    async session({ session, token }) {
-      // Passa o token para a sessão do React
-      // @ts-ignore
-      session.id_token = token.apiToken;
-      // @ts-ignore
-      session.error = token.error;
+    async session({ session, token }: any) {
+      if (session.user) {
+        session.user.role = token.role;
+        session.user.id = token.id;
+        // @ts-ignore
+        session.id_token = token.id_token;
+      }
       return session;
     },
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  // 👇 A MÁGICA ESTÁ AQUI:
+  // Dizemos ao NextAuth: "Se precisar logar, mande para ESTA tela, não a padrão"
+  pages: {
+    signIn: "/login-admin",
+    error: "/login-admin", // Se errar a senha, volta para lá
+  },
+  session: {
+    strategy: "jwt",
+  },
 };
 
 const handler = NextAuth(authOptions);
-
 export { handler as GET, handler as POST };

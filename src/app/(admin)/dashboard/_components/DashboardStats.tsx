@@ -33,10 +33,13 @@ export default function DashboardStats() {
           false,
           100
         );
-        setFeedbacks(data.items);
-        setTotalCount(data.total); // Total real do banco
+
+        // CORREÇÃO AQUI: Adicionado "|| []" para garantir que nunca seja undefined
+        setFeedbacks(data.items || []);
+        setTotalCount(data.total || 0);
       } catch (error) {
         console.error("Erro ao carregar estatísticas", error);
+        setFeedbacks([]); // Garante array vazio em caso de erro
       } finally {
         setIsLoading(false);
       }
@@ -46,27 +49,38 @@ export default function DashboardStats() {
 
   // --- CÁLCULOS DINÂMICOS ---
 
+  // Proteção extra: Se feedbacks for undefined por algum motivo, usa array vazio
+  const safeFeedbacks = feedbacks || [];
+
   // 1. Totais
-  const totalVotes = feedbacks.reduce((acc, curr) => acc + curr.votes, 0);
-  const inProgressCount = feedbacks.filter(
+  const totalVotes = safeFeedbacks.reduce(
+    (acc, curr) => acc + (curr.votes || 0),
+    0
+  );
+  const inProgressCount = safeFeedbacks.filter(
     (f) => f.status === "in_progress"
   ).length;
-  const doneCount = feedbacks.filter((f) => f.status === "done").length;
+  const doneCount = safeFeedbacks.filter((f) => f.status === "done").length;
 
   // 2. Por Categoria (Agrupamento)
-  const byCategory = feedbacks.reduce((acc, curr) => {
-    acc[curr.category] = (acc[curr.category] || 0) + 1;
+  const byCategory = safeFeedbacks.reduce((acc, curr) => {
+    // Garante que a categoria exista como chave
+    const category = curr.category || "outros";
+    acc[category] = (acc[category] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
   // 3. Por Status (Agrupamento)
-  const byStatus = feedbacks.reduce((acc, curr) => {
-    acc[curr.status] = (acc[curr.status] || 0) + 1;
+  const byStatus = safeFeedbacks.reduce((acc, curr) => {
+    const status = curr.status || "unknown";
+    acc[status] = (acc[status] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
 
   // 4. Mais Votados (Top 5)
-  const topVoted = [...feedbacks].sort((a, b) => b.votes - a.votes).slice(0, 5);
+  const topVoted = [...safeFeedbacks]
+    .sort((a, b) => (b.votes || 0) - (a.votes || 0))
+    .slice(0, 5);
 
   // Tradução de labels para exibição
   const translateStatus = (s: string) => {
@@ -76,6 +90,7 @@ export default function DashboardStats() {
       done: "Concluído",
       rejected: "Rejeitado",
       in_progress: "Em Progresso",
+      unknown: "Desconhecido",
     };
     return map[s] || s;
   };
@@ -84,6 +99,7 @@ export default function DashboardStats() {
       improvement: "Melhoria",
       feature: "Funcionalidade",
       bug: "Bug",
+      outros: "Outros",
     };
     return map[c] || c;
   };

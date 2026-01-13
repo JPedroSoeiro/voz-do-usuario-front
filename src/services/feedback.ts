@@ -91,4 +91,35 @@ export const FeedbackService = {
   updatePriority: async (id: string, priority: "low" | "medium" | "high") => {
     return api.put(`/admin/feedback/${id}/priority`, { priority });
   },
+
+  getAllAdmin: async (
+    page = 1,
+    status = "all",
+    category = "all",
+    search = ""
+  ) => {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: "10",
+      orderBy: "date",
+    });
+
+    if (status !== "all") params.append("status", status);
+    if (category !== "all") params.append("category", category);
+    if (search) params.append("search", search);
+
+    // Chama a rota do backend /admin/feedbacks que criamos anteriormente
+    const response = await api.get(`/admin/feedbacks?${params.toString()}`);
+    return response.data;
+  },
+
+  // Admin deleta qualquer um
+  deleteAdmin: async (id: string) => {
+    return api.delete(`/admin/feedbacks/${id}`);
+  },
+
+  // Admin edita qualquer um
+  updateAdmin: async (id: string, data: any) => {
+    return api.put(`/admin/feedbacks/${id}`, data);
+  },
 };

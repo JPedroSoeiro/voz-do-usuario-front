@@ -2,7 +2,7 @@ import axios from "axios";
 import { getSession } from "next-auth/react";
 
 export const api = axios.create({
-  baseURL: "http://localhost:3001", // URL do seu Backend
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001",
 });
 
 // Interceptor: Antes de cada requisição, coloca o token
