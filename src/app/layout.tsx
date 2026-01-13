@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import AuthProvider from "../providers/auth-provider";
+import AuthProvider from "@/src/providers/auth-provider";
 
 export const metadata: Metadata = {
   title: "Voz do Usuário",
