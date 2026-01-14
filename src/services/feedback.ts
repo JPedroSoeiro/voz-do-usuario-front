@@ -1,64 +1,83 @@
+// src/services/feedback.ts
 import { api } from "@/src/lib/api";
-import { Feedback, PaginatedResponse } from "@/src/types/feedback";
+import { Feedback, PaginatedResponse } from "../types/feedback";
 
 export const FeedbackService = {
-  // --- PÚBLICO / USUÁRIO ---
-
-  getAll: async (
-    page = 1,
-    category = "all",
-    status = "all",
-    sort = "date",
-    isAuthenticated = false,
-    limit = 4
+  // Lista pública (para visitantes)
+  getAllFeedbacks: async (
+    params: any
   ): Promise<PaginatedResponse<Feedback>> => {
-    const offset = (page - 1) * limit;
-    const endpoint = isAuthenticated ? "/feedback/feed" : "/feedback";
-
-    const params: any = { limit, offset };
-
-    if (category !== "all") params.category = category;
-    if (status !== "all") params.status = status;
-    if (sort === "votes") params.orderBy = "votes";
-
-    const response = await api.get(endpoint, { params });
-    return response.data;
+    const { data } = await api.get("/feedback", { params });
+    // Se o backend retornar array direto, transformamos em objeto
+    return Array.isArray(data)
+      ? { items: data, total: data.length, limit: 10, offset: 0 }
+      : data;
   },
 
-  getMine: async (page = 1): Promise<PaginatedResponse<Feedback>> => {
-    const limit = 4;
+  // Feed logado (com has_voted)
+  getFeed: async (params: any): Promise<PaginatedResponse<Feedback>> => {
+    const { data } = await api.get("/feedback/feed", { params });
+    return data;
+  },
+
+  // Meus Feedbacks (Ponto 6)
+  getMyFeedbacks: async ({
+    page = 1,
+    limit = 3,
+    search = "",
+    status = "all",
+  }: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+  }) => {
+    // Cálculo do offset para a paginação
     const offset = (page - 1) * limit;
-    // Rota para pegar os feedbacks do próprio usuário
-    const response = await api.get("/feedback/my-feedbacks", {
-      params: { limit, offset },
+
+    const { data } = await api.get("/feedback/mine", {
+      params: {
+        limit,
+        offset,
+        // Só envia o parâmetro de busca se houver algo digitado
+        search: search || undefined,
+        // Se o status for "all", enviamos undefined para o backend ignorar o filtro
+        status: status !== "all" ? status : undefined,
+      },
     });
-    return response.data;
+
+    // Tratamento de resposta (Array vs Objeto Paginado)
+    if (Array.isArray(data)) {
+      return {
+        items: data,
+        total: data.length,
+        limit,
+        offset,
+      };
+    }
+
+    return data;
   },
 
-  create: async (data: {
+  // Criar e Editar
+  create: async (payload: {
     title: string;
     description: string;
     category: string;
   }) => {
-    return api.post("/feedback", data);
+    return api.post("/feedback", payload);
   },
 
+  // 👇 CORREÇÃO: category agora é opcional (?) para não dar erro no MyFeedbacks
   update: async (
     id: string,
-    data: { title: string; description: string; category: string }
+    payload: { title?: string; description?: string; category?: string }
   ) => {
-    return api.put(`/feedback/${id}`, data);
+    return api.put(`/feedback/${id}`, payload);
   },
 
-  delete: async (id: string) => {
-    try {
-      return await api.delete(`/feedback/${id}`);
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  addVote: async (id: string) => {
+  // Votos
+  vote: async (id: string) => {
     return api.post(`/feedback/${id}/vote`);
   },
 
@@ -66,72 +85,23 @@ export const FeedbackService = {
     return api.delete(`/feedback/${id}/vote`);
   },
 
-  // --- ADMIN (MODERAÇÃO & ESTATÍSTICAS) ---
-
-  // 👇 NOVA FUNÇÃO: Busca o resumo para os Cards e Gráficos do Dashboard
-  getDashboardSummary: async () => {
-    const { data } = await api.get("/admin/dashboard/summary");
-    return data;
-  },
-
-  getPending: async () => {
-    const response = await api.get("/admin/feedback/pending");
-    return Array.isArray(response.data)
-      ? response.data
-      : response.data.items || [];
-  },
-
-  getAllAdmin: async (
-    page = 1,
-    status = "all",
-    category = "all",
-    search = ""
-  ) => {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      limit: "10",
-      orderBy: "date",
-    });
-
-    if (status !== "all") params.append("status", status);
-    if (category !== "all") params.append("category", category);
-    if (search) params.append("search", search);
-
-    // Rota correta (singular)
-    const response = await api.get(`/admin/feedback?${params.toString()}`);
-    return response.data;
-  },
-
-  // Admin deleta qualquer um
-  deleteAdmin: async (id: string) => {
-    return api.delete(`/admin/feedback/${id}`);
-  },
-
-  // Admin edita qualquer um
-  updateAdmin: async (id: string, data: any) => {
-    return api.put(`/admin/feedback/${id}`, data);
-  },
-
-  getAllFeedbacksAdmin: async (params: any) => {
-    // params = { search, status, category, priority, sort, page, limit }
+  // Moderação Admin
+  getAllFeedbacksAdmin: async (
+    params: any
+  ): Promise<PaginatedResponse<Feedback>> => {
     const { data } = await api.get("/admin/feedback", { params });
     return data;
   },
 
-  // 👇 NOVAS: Ações de Moderação (Req. 7)
   updateStatus: async (id: string, status: string) => {
-    const { data } = await api.put(`/admin/feedback/${id}/status`, { status });
-    return data;
+    return api.put(`/admin/feedback/${id}/status`, { status });
   },
 
   updatePriority: async (id: string, priority: string) => {
-    const { data } = await api.put(`/admin/feedback/${id}/priority`, {
-      priority,
-    });
-    return data;
+    return api.put(`/admin/feedback/${id}/priority`, { priority });
   },
 
   deleteFeedback: async (id: string) => {
-    await api.delete(`/admin/feedback/${id}`);
+    return api.delete(`/feedback/${id}`);
   },
 };

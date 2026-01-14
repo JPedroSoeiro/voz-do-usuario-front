@@ -1,9 +1,9 @@
 "use client";
 
 import { useSession, signOut } from "next-auth/react";
-import { Bell, Search, LogOut, User } from "lucide-react";
+import { Bell, LogOut, User } from "lucide-react"; // Removido 'Search'
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+// Removido import do Input que não é mais usado
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,19 +22,9 @@ export default function Header() {
   const adminInitial = adminName[0]?.toUpperCase() || "A";
 
   return (
-    <header className="h-16 border-b bg-white px-6 flex items-center justify-between sticky top-0 z-10">
-      {/* Lado Esquerdo - Busca (Visual apenas por enquanto) */}
-      <div className="flex items-center gap-4 w-1/3">
-        <div className="relative w-full max-w-md hidden md:block">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
-          <Input
-            placeholder="Buscar no painel..."
-            className="pl-9 bg-gray-50 border-gray-200"
-          />
-        </div>
-      </div>
-
-      {/* Lado Direito - Ações e Perfil */}
+    // Mudei 'justify-between' para 'justify-end' para colar tudo na direita
+    <header className="h-16 border-b bg-white px-6 flex items-center justify-end sticky top-0 z-10">
+      {/* Lado Direito - Notificações e Perfil */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" className="text-gray-500 relative">
           <Bell className="h-5 w-5" />

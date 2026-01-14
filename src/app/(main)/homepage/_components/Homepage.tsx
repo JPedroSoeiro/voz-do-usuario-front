@@ -11,6 +11,8 @@ import {
   Trash2,
   LayoutDashboard,
   AlertTriangle,
+  UserCircle,
+  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,15 +32,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSession, signOut, signIn } from "next-auth/react";
-import { api } from "@/src/lib/api";
+import { useRouter } from "next/navigation";
+
+// Componentes e Serviços
 import CreateFeedback from "./CreateFeedback";
 import EditFeedback from "./EditFeedback";
 import { FeedbackService } from "@/src/services/feedback";
 import { Feedback } from "@/src/types/feedback";
-import { UserProfile } from "@/src/types/auth";
-import { useRouter } from "next/navigation";
-
-// 👇 IMPORTAMOS O NOVO MODAL AQUI
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,131 +50,106 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+// DICIONÁRIOS DE TRADUÇÃO PADRONIZADOS
+const categoryMap: Record<string, string> = {
+  bug: "Bug",
+  feature: "Funcionalidade",
+  improvement: "Melhoria",
+  other: "Outro",
+};
+
+const statusMap: Record<string, string> = {
+  pending: "Pendente",
+  in_review: "Em Análise",
+  accepted: "Aceito",
+  rejected: "Recusado",
+  in_progress: "Em Andamento",
+  done: "Concluído",
+};
+
 export default function HomepageComponent() {
   const { data: session, status } = useSession();
+  const router = useRouter();
 
   // @ts-ignore
   const isPendingVerification =
     (session as any)?.error === "EMAIL_VERIFICATION_REQUIRED";
-  const router = useRouter();
+  const isAuthenticated = status === "authenticated" && !isPendingVerification;
 
+  // Estados
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [totalItems, setTotalItems] = useState(0);
 
+  // Modais
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingFeedback, setEditingFeedback] = useState<Feedback | null>(null);
-
-  // 👇 ESTADO PARA CONTROLAR O DELETE (Guarda o ID que será apagado)
   const [feedbackToDelete, setFeedbackToDelete] = useState<string | null>(null);
-
   const [showLoginAlert, setShowLoginAlert] = useState(false);
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
 
+  // Filtros
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortFilter, setSortFilter] = useState("date");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 4;
+  const itemsPerPage = 5;
 
-  const isAuthenticated = status === "authenticated" && !isPendingVerification;
-
+  // 1. Redirecionamento de Admin
   useEffect(() => {
-    if (status === "authenticated") {
-      // @ts-ignore
-      const userRole = session?.user?.role;
-
-      if (userRole === "admin") {
-        console.log("Admin na área pública? Redirecionando para Dashboard...");
-        router.push("/dashboard");
-      }
+    // @ts-ignore
+    if (isAuthenticated && session?.user?.role === "admin") {
+      router.push("/dashboard");
     }
-  }, [status, session, router]);
+  }, [isAuthenticated, session, router]);
 
-  const userDisplay =
+  const currentUser =
     isAuthenticated && session?.user
       ? {
           name: session.user.name || "Usuário",
           email: session.user.email,
           initial: session.user.name?.[0]?.toUpperCase() || "U",
-          // Adiciona um ID fictício se não tiver, para evitar erros
-          id: (session as any).id_token || "user-session-id",
+          // @ts-ignore
+          id:
+            (session as any).user?.id ||
+            (session as any).sub ||
+            session.user.email,
         }
       : null;
 
-  // Popula o currentUser direto da sessão do Google (sem chamar o backend)
-  useEffect(() => {
-    if (isAuthenticated && session?.user) {
-      setCurrentUser({
-        // @ts-ignore
-        id: (session as any).user?.id || session.user.email || "user-id",
-        email: session.user.email || "",
-        name: session.user.name || "",
-        // @ts-ignore
-        role: (session as any).user?.role || "user",
-
-        // 👇 ADICIONAMOS ESTES DOIS CAMPOS PARA O TYPESCRIPT FICAR FELIZ
-        avatar: "",
-        created_at: new Date().toISOString(), // Data fictícia de "agora"
-      });
-    } else {
-      setCurrentUser(null);
-    }
-  }, [session, isAuthenticated]);
-
-  /*
-  useEffect(() => {
-    if (isAuthenticated) {
-      api
-        .get("/auth/me")
-        .then((res: any) => setCurrentUser(res.data.user))
-        .catch((err: any) => console.error(err));
-    } else {
-      setCurrentUser(null);
-    }
-  }, [isAuthenticated]);
-*/
-
+  // 2. Busca Feedbacks
   const fetchFeedbacks = useCallback(async () => {
     if (status === "loading") return;
     setIsLoading(true);
-    try {
-      // Tenta buscar com o status atual de autenticação
-      const data = await FeedbackService.getAll(
-        currentPage,
-        categoryFilter,
-        statusFilter,
-        sortFilter,
-        isAuthenticated
-      );
 
-      // CORREÇÃO: Usa "|| []" para garantir que nunca seja undefined
+    try {
+      let data;
+      if (isAuthenticated) {
+        data = await FeedbackService.getFeed({
+          page: currentPage,
+          limit: itemsPerPage,
+          search: searchTerm,
+          category: categoryFilter !== "all" ? categoryFilter : undefined,
+          status: statusFilter !== "all" ? statusFilter : undefined,
+          sort: sortFilter,
+        });
+      } else {
+        data = await FeedbackService.getAllFeedbacks({
+          page: 1,
+          limit: 5,
+          search: searchTerm,
+          category: categoryFilter !== "all" ? categoryFilter : undefined,
+          status: statusFilter !== "all" ? statusFilter : undefined,
+          sort: sortFilter,
+        });
+      }
+
       setFeedbacks(data.items || []);
       setTotalItems(data.total || 0);
-    } catch (error: any) {
+    } catch (error) {
       console.error("Erro ao buscar:", error);
-
-      // Se der erro 401 (Não autorizado), tenta buscar como público (sem logar)
-      if (error.response?.status === 401 && isAuthenticated) {
-        try {
-          const publicData = await FeedbackService.getAll(
-            currentPage,
-            categoryFilter,
-            statusFilter,
-            sortFilter,
-            false // Força false para buscar público
-          );
-          setFeedbacks(publicData.items || []);
-          setTotalItems(publicData.total || 0);
-        } catch (e) {
-          setFeedbacks([]); // Se falhar tudo, lista vazia
-        }
-      } else {
-        // Outros erros
-        setFeedbacks([]);
-      }
+      setFeedbacks([]);
     } finally {
       setIsLoading(false);
     }
@@ -185,113 +160,81 @@ export default function HomepageComponent() {
     sortFilter,
     isAuthenticated,
     status,
+    searchTerm,
   ]);
 
   useEffect(() => {
     fetchFeedbacks();
   }, [fetchFeedbacks]);
 
+  // 3. Voto Otimista
   const handleVote = async (feedback: Feedback) => {
     if (!isAuthenticated) {
-      if (!isPendingVerification) setShowLoginAlert(true);
+      setShowLoginAlert(true);
       return;
     }
+
     const previousFeedbacks = [...feedbacks];
     const isLiking = !feedback.has_voted;
+
     setFeedbacks((prev) =>
       prev.map((f) =>
         f.id === feedback.id
           ? {
               ...f,
               has_voted: isLiking,
-              votes: isLiking ? f.votes + 1 : f.votes - 1,
+              total_votes: isLiking
+                ? (f.total_votes || 0) + 1
+                : Math.max(0, (f.total_votes || 0) - 1),
             }
           : f
       )
     );
+
     try {
-      if (isLiking) await FeedbackService.addVote(feedback.id);
+      if (isLiking) await FeedbackService.vote(feedback.id);
       else await FeedbackService.removeVote(feedback.id);
     } catch (error) {
       setFeedbacks(previousFeedbacks);
     }
   };
 
-  // 👇 CLIQUE NA LIXEIRA: Só abre o modal (não deleta ainda)
-  const handleDeleteClick = (id: string) => {
-    setFeedbackToDelete(id);
-  };
-
-  // 👇 CONFIRMAÇÃO DO MODAL: Aqui sim deleta
   const confirmDelete = async () => {
     if (!feedbackToDelete) return;
     try {
-      await FeedbackService.delete(feedbackToDelete);
-      fetchFeedbacks();
+      await FeedbackService.deleteFeedback(feedbackToDelete);
+      setFeedbacks((prev) => prev.filter((f) => f.id !== feedbackToDelete));
+      setFeedbackToDelete(null);
     } catch (error) {
-      alert("Erro ao apagar. Verifique se você ainda tem permissão.");
-    } finally {
-      setFeedbackToDelete(null); // Fecha o modal
+      alert("Erro ao excluir.");
     }
   };
 
-  const handleEditClick = (feedback: Feedback) => {
-    setEditingFeedback(feedback);
-    setIsEditModalOpen(true);
-  };
-
+  const totalPages = isAuthenticated
+    ? Math.ceil(totalItems / itemsPerPage) || 1
+    : 1;
   const handlePageChange = (page: number) => {
-    if (!isAuthenticated && page > 1) {
-      if (!isPendingVerification) setShowLoginAlert(true);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      return;
-    }
+    if (!isAuthenticated) return setShowLoginAlert(true);
     setCurrentPage(page);
-  };
-
-  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
-  const getStatusLabel = (s: string) => {
-    const map: any = {
-      pending: "Pendente",
-      accepted: "Aceito",
-      done: "Concluído",
-      rejected: "Rejeitado",
-      in_progress: "Em Progresso",
-    };
-    return map[s] || s;
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return (
     <div className="min-h-screen bg-blue-50 flex flex-col">
       <header className="bg-white border-b w-full h-16 flex items-center justify-between px-6 sticky top-0 z-10 shadow-sm">
-        <span className="text-xl font-extrabold text-blue-900">
+        <span className="text-xl font-extrabold text-blue-900 tracking-tight">
           Voz do Usuário
         </span>
         <div className="flex items-center gap-4">
-          {userDisplay ? (
+          {currentUser ? (
             <>
-              {currentUser?.role === "admin" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-blue-700 border-blue-200 bg-blue-50 hover:bg-blue-100 hidden sm:flex"
-                  onClick={() => (window.location.href = "/dashboard")}
-                >
-                  <LayoutDashboard className="h-4 w-4 mr-2" />
-                  Painel Admin
-                </Button>
-              )}
-
               <div className="flex items-center gap-3 bg-gray-50 rounded-full pl-1 pr-4 py-1.5 border border-gray-200">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white shadow-sm">
-                  {userDisplay.initial}
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
+                  {currentUser.initial}
                 </div>
                 <div className="flex flex-col text-left">
                   <span className="text-xs font-bold text-gray-700 leading-none">
-                    {userDisplay.name}
-                  </span>
-                  <span className="text-[10px] text-gray-500 leading-none mt-0.5 max-w-30 truncate hidden sm:block">
-                    {userDisplay.email}
+                    {currentUser.name}
                   </span>
                 </div>
               </div>
@@ -299,24 +242,13 @@ export default function HomepageComponent() {
                 variant="ghost"
                 size="icon"
                 onClick={() => signOut({ callbackUrl: "/" })}
-                className="text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                className="text-gray-400 hover:text-red-500"
               >
                 <LogOut className="h-5 w-5" />
               </Button>
             </>
-          ) : isPendingVerification ? (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => signOut({ callbackUrl: "/" })}
-            >
-              Sair
-            </Button>
           ) : (
-            <Button
-              size="sm"
-              onClick={() => signIn("google", { callbackUrl: "/" })}
-            >
+            <Button size="sm" onClick={() => signIn("google")}>
               Login
             </Button>
           )}
@@ -325,99 +257,54 @@ export default function HomepageComponent() {
 
       <main className="flex-1 flex flex-col items-center pt-8 px-4 pb-20">
         <div className="w-full max-w-2xl text-center space-y-4 mb-8">
-          {isPendingVerification && (
-            <div className="w-full bg-blue-100 border-l-4 border-blue-600 text-blue-900 p-6 rounded-md shadow-md mb-6 text-left">
-              Confirme seu email.
-            </div>
-          )}
-
           <h1 className="text-3xl font-black text-gray-900 tracking-tight">
             Feedbacks da Comunidade
           </h1>
 
-          {showLoginAlert && !userDisplay && !isPendingVerification && (
-            <div className="mx-auto max-w-md bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded shadow-md animate-in fade-in slide-in-from-top-4 text-left">
-              <div className="flex items-start">
-                <div className="shrink-0">
-                  <Lock className="h-5 w-5 text-yellow-500" />
-                </div>
+          {showLoginAlert && (
+            <div className="mx-auto max-w-md bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded shadow-md text-left">
+              <div className="flex">
+                <Lock className="h-5 w-5 text-yellow-500 shrink-0" />
                 <div className="ml-3">
                   <h3 className="text-sm font-bold text-yellow-800">
                     Acesso Restrito
                   </h3>
                   <p className="text-sm text-yellow-700 mt-1">
-                    Faça login para postar ou curtir.
+                    Faça login para votar ou ver mais feedbacks.
                   </p>
                   <Button
                     size="sm"
-                    className="mt-3 bg-yellow-600 hover:bg-yellow-700 text-white"
-                    onClick={() => signIn("google", { callbackUrl: "/" })}
+                    className="mt-2 bg-yellow-600"
+                    onClick={() => signIn("google")}
                   >
-                    Login com Google
+                    Login
                   </Button>
-                  <button
-                    onClick={() => setShowLoginAlert(false)}
-                    className="ml-3 text-sm text-yellow-600 hover:underline"
-                  >
-                    Fechar
-                  </button>
                 </div>
               </div>
             </div>
           )}
 
-          <Button
-            onClick={() => {
-              if (isPendingVerification) return;
-              !isAuthenticated
-                ? setShowLoginAlert(true)
-                : setIsCreateModalOpen(true);
-            }}
-            disabled={isPendingVerification}
-            className="bg-blue-600 hover:bg-blue-700 h-10 px-6 shadow-md"
-          >
-            <PlusCircle className="h-4 w-4 mr-2" /> Criar Feedback
-          </Button>
-
-          <CreateFeedback
-            isOpen={isCreateModalOpen}
-            onClose={() => setIsCreateModalOpen(false)}
-            onSuccess={fetchFeedbacks}
-          />
-          <EditFeedback
-            isOpen={isEditModalOpen}
-            onClose={() => setIsEditModalOpen(false)}
-            feedback={editingFeedback}
-            onSuccess={fetchFeedbacks}
-          />
-
-          {/* 👇 AQUI ESTÁ O MODAL NOVO! */}
-          <AlertDialog
-            open={!!feedbackToDelete}
-            onOpenChange={() => setFeedbackToDelete(null)}
-          >
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5 text-red-600" />
-                  <AlertDialogTitle>Tem certeza absoluta?</AlertDialogTitle>
-                </div>
-                <AlertDialogDescription>
-                  Essa ação não pode ser desfeita. Isso excluirá permanentemente
-                  seu feedback e todos os votos serão perdidos.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={confirmDelete}
-                  className="bg-red-600 hover:bg-red-700 text-white focus:ring-red-600"
-                >
-                  Sim, excluir feedback
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <div className="flex justify-center gap-3">
+            {isAuthenticated && (
+              <Button
+                variant="outline"
+                onClick={() => router.push("/my-feedbacks")}
+                className="border-blue-200 text-blue-700 hover:bg-blue-50"
+              >
+                <UserCircle className="h-4 w-4 mr-2" /> Meus Feedbacks
+              </Button>
+            )}
+            <Button
+              onClick={() =>
+                !isAuthenticated
+                  ? setShowLoginAlert(true)
+                  : setIsCreateModalOpen(true)
+              }
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <PlusCircle className="h-4 w-4 mr-2" /> Criar Feedback
+            </Button>
+          </div>
         </div>
 
         <div className="w-full max-w-3xl space-y-4">
@@ -426,38 +313,41 @@ export default function HomepageComponent() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <Input
                 placeholder="Pesquisar..."
-                className="pl-10 h-10 bg-white text-sm w-full"
+                className="pl-10 h-10 bg-white"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <div className="grid grid-cols-3 gap-2 w-full">
+
+            <div className="grid grid-cols-3 gap-2">
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="w-full h-10 bg-white text-sm px-2">
-                  <SelectValue placeholder="Categ." />
+                <SelectTrigger className="w-full h-10 bg-white border-gray-200">
+                  <SelectValue placeholder="Todas" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todas</SelectItem>
                   <SelectItem value="improvement">Melhoria</SelectItem>
-                  <SelectItem value="feature">Func.</SelectItem>
+                  <SelectItem value="feature">Funcionalidade</SelectItem>
                   <SelectItem value="bug">Bug</SelectItem>
                 </SelectContent>
               </Select>
+
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full h-10 bg-white text-sm px-2">
-                  <SelectValue placeholder="Status" />
+                <SelectTrigger className="w-full h-10 bg-white border-gray-200">
+                  <SelectValue placeholder="Todos" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
                   <SelectItem value="pending">Pendente</SelectItem>
                   <SelectItem value="accepted">Aceito</SelectItem>
+                  <SelectItem value="in_progress">Em Andamento</SelectItem>
                   <SelectItem value="done">Concluído</SelectItem>
-                  <SelectItem value="rejected">Rejeitado</SelectItem>
                 </SelectContent>
               </Select>
+
               <Select value={sortFilter} onValueChange={setSortFilter}>
-                <SelectTrigger className="w-full h-10 bg-white text-sm px-2">
-                  <SelectValue placeholder="Ordem" />
+                <SelectTrigger className="w-full h-10 bg-white border-gray-200">
+                  <SelectValue placeholder="Recentes" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="date">Recentes</SelectItem>
@@ -472,9 +362,9 @@ export default function HomepageComponent() {
               <div className="text-center py-10 text-blue-500">
                 Carregando...
               </div>
-            ) : (feedbacks || []).length === 0 ? ( // <--- CORREÇÃO: (feedbacks || [])
+            ) : feedbacks.length === 0 ? (
               <div className="text-center py-10 text-gray-500">
-                Nenhum feedback encontrado.
+                Nenhum feedback.
               </div>
             ) : (
               feedbacks.map((stat) => {
@@ -488,19 +378,21 @@ export default function HomepageComponent() {
                   >
                     <div className="flex justify-between items-center">
                       <div className="flex flex-col gap-1 max-w-[70%]">
-                        <span
-                          className="text-sm font-bold text-gray-900 truncate"
-                          title={stat.title}
-                        >
+                        <span className="text-sm font-bold text-gray-900 truncate">
                           {stat.title}
                         </span>
-                        <div className="flex items-center gap-2 text-[10px] text-gray-500">
-                          <span className="font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded uppercase">
-                            {stat.category}
+                        <div className="flex items-center gap-2 text-[10px]">
+                          <span className="font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 uppercase">
+                            {categoryMap[stat.category] || stat.category}
                           </span>
-                          <span>•</span>
-                          <span className="capitalize text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">
-                            {getStatusLabel(stat.status)}
+                          <span
+                            className={`px-1.5 py-0.5 rounded border uppercase ${
+                              stat.status === "done"
+                                ? "bg-green-50 text-green-700 border-green-100"
+                                : "bg-gray-100 text-gray-600 border-gray-200"
+                            }`}
+                          >
+                            {statusMap[stat.status] || stat.status}
                           </span>
                         </div>
                       </div>
@@ -513,45 +405,35 @@ export default function HomepageComponent() {
                                 <Button
                                   size="icon"
                                   variant="ghost"
-                                  className="h-8 w-8 text-blue-600 hover:bg-blue-50"
-                                  onClick={() => handleEditClick(stat)}
-                                  title="Editar"
+                                  className="h-8 w-8 text-blue-600"
+                                  onClick={() => {
+                                    setEditingFeedback(stat);
+                                    setIsEditModalOpen(true);
+                                  }}
                                 >
                                   <Edit className="h-4 w-4" />
                                 </Button>
-                                {/* MUDANÇA: Agora chama a função que abre o modal */}
                                 <Button
                                   size="icon"
                                   variant="ghost"
-                                  className="h-8 w-8 text-red-600 hover:bg-red-50"
-                                  onClick={() => handleDeleteClick(stat.id)}
-                                  title="Excluir"
+                                  className="h-8 w-8 text-red-600"
+                                  onClick={() => setFeedbackToDelete(stat.id)}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </>
                             ) : (
-                              <div
-                                title="Bloqueado"
-                                className="cursor-help p-1"
-                              >
-                                <Lock className="h-4 w-4 text-gray-300" />
-                              </div>
+                              <Lock className="h-4 w-4 text-gray-300" />
                             )}
                           </div>
                         )}
 
                         <button
                           onClick={() => handleVote(stat)}
-                          disabled={isPendingVerification}
-                          className={`flex flex-col items-center px-3 py-1.5 rounded border min-w-15 transition-all ${
+                          className={`flex flex-col items-center px-3 py-1.5 rounded border min-w-12.5 transition-all ${
                             stat.has_voted
                               ? "bg-blue-50 border-blue-200 text-blue-600"
-                              : "bg-gray-50 border-gray-200 text-gray-400 hover:bg-gray-100"
-                          } ${
-                            isPendingVerification
-                              ? "cursor-not-allowed opacity-60"
-                              : ""
+                              : "bg-gray-50 border-gray-200 text-gray-400"
                           }`}
                         >
                           <ThumbsUp
@@ -559,8 +441,8 @@ export default function HomepageComponent() {
                               stat.has_voted ? "fill-blue-600" : ""
                             }`}
                           />
-                          <span className="text-[9px] uppercase font-bold tracking-tighter">
-                            {stat.votes}
+                          <span className="text-[10px] font-bold">
+                            {stat.total_votes || 0}
                           </span>
                         </button>
                       </div>
@@ -569,9 +451,34 @@ export default function HomepageComponent() {
                 );
               })
             )}
+
+            {!isAuthenticated && !isLoading && (
+              /* 👇 Aplicada a classe bg-linear-to-r sugerida pelo Tailwind */
+              <div className="mt-4 bg-linear-to-r from-blue-700 to-blue-900 rounded-lg p-5 text-white shadow-md border border-blue-400/20 flex flex-col items-center text-center">
+                <div className="flex items-center gap-2 mb-2">
+                  <Lock className="h-4 w-4 text-blue-200" />
+                  <h3 className="text-sm font-bold tracking-wide uppercase">
+                    Área Restrita
+                  </h3>
+                </div>
+                <p className="text-blue-100 text-xs mb-4 max-w-sm">
+                  Limite de visualização atingido.
+                  <span className="font-semibold text-white ml-1">
+                    Faça login para ver tudo!
+                  </span>
+                </p>
+                <Button
+                  onClick={() => signIn("google")}
+                  size="sm"
+                  className="bg-white text-blue-800 hover:bg-blue-50 font-bold h-8 px-8"
+                >
+                  Entrar com Google
+                </Button>
+              </div>
+            )}
           </div>
 
-          {totalPages > 1 && (
+          {isAuthenticated && totalPages > 1 && (
             <div className="py-4">
               <Pagination>
                 <PaginationContent>
@@ -582,36 +489,11 @@ export default function HomepageComponent() {
                         e.preventDefault();
                         handlePageChange(Math.max(1, currentPage - 1));
                       }}
-                      className={
-                        currentPage === 1
-                          ? "pointer-events-none opacity-50"
-                          : "cursor-pointer"
-                      }
                     />
                   </PaginationItem>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                    (page) => (
-                      <PaginationItem key={page}>
-                        <PaginationLink
-                          href="#"
-                          isActive={currentPage === page}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            handlePageChange(page);
-                          }}
-                          className={`cursor-pointer ${
-                            !isAuthenticated && page > 1 ? "opacity-60" : ""
-                          }`}
-                        >
-                          {!isAuthenticated && page > 1 ? (
-                            <Lock className="h-3 w-3" />
-                          ) : (
-                            page
-                          )}
-                        </PaginationLink>
-                      </PaginationItem>
-                    )
-                  )}
+                  <PaginationItem>
+                    <PaginationLink isActive>{currentPage}</PaginationLink>
+                  </PaginationItem>
                   <PaginationItem>
                     <PaginationNext
                       href="#"
@@ -619,11 +501,6 @@ export default function HomepageComponent() {
                         e.preventDefault();
                         handlePageChange(Math.min(totalPages, currentPage + 1));
                       }}
-                      className={
-                        currentPage === totalPages
-                          ? "pointer-events-none opacity-50"
-                          : "cursor-pointer"
-                      }
                     />
                   </PaginationItem>
                 </PaginationContent>
@@ -632,6 +509,37 @@ export default function HomepageComponent() {
           )}
         </div>
       </main>
+
+      <CreateFeedback
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSuccess={fetchFeedbacks}
+      />
+      <EditFeedback
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        feedback={editingFeedback}
+        onSuccess={fetchFeedbacks}
+      />
+      <AlertDialog
+        open={!!feedbackToDelete}
+        onOpenChange={() => setFeedbackToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação é irreversível.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-red-600">
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
