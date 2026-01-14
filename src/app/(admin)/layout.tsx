@@ -3,7 +3,7 @@
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "./_components/Sidebar";
 import Header from "./_components/Header";
-import { SessionProvider } from "next-auth/react"; // 👈 1. Importe isso
+import { SessionProvider } from "next-auth/react";
 
 export default function AdminLayout({
   children,

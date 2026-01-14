@@ -1,41 +1,79 @@
 "use client";
 
-import { Bell } from "lucide-react";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+import { useSession, signOut } from "next-auth/react";
+import { Bell, Search, LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function Header() {
+  const { data: session } = useSession();
+
+  // Pega o nome do admin ou usa um fallback
+  const adminName = session?.user?.name || "Administrador";
+  const adminEmail = session?.user?.email || "admin@voz.com";
+  const adminInitial = adminName[0]?.toUpperCase() || "A";
+
   return (
-    <header className="bg-white border-b w-full h-16 flex items-center justify-between px-4 shrink-0">
-      <div className="flex items-center gap-4">
-        <SidebarTrigger className="-ml-1" />
-
-        <div className="h-6 w-px bg-gray-200 hidden md:block" />
-
-        <h1 className="text-xl font-semibold text-gray-800 hidden sm:block">
-          Painel de Controle
-        </h1>
+    <header className="h-16 border-b bg-white px-6 flex items-center justify-between sticky top-0 z-10">
+      {/* Lado Esquerdo - Busca (Visual apenas por enquanto) */}
+      <div className="flex items-center gap-4 w-1/3">
+        <div className="relative w-full max-w-md hidden md:block">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+          <Input
+            placeholder="Buscar no painel..."
+            className="pl-9 bg-gray-50 border-gray-200"
+          />
+        </div>
       </div>
 
+      {/* Lado Direito - Ações e Perfil */}
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" className="relative rounded-full">
-          <Bell className="h-5 w-5 text-gray-600" />
-          <span className="absolute top-2 right-2 flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-          </span>
+        <Button variant="ghost" size="icon" className="text-gray-500 relative">
+          <Bell className="h-5 w-5" />
+          <span className="absolute top-2 right-2 h-2 w-2 bg-red-500 rounded-full" />
         </Button>
 
-        <div className="flex items-center gap-3 border-l pl-4">
-          <div className="hidden md:flex flex-col items-end">
-            <span className="text- font-medium text-gray-900 leading-none">
-              John Doe
-            </span>
-          </div>
-          <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border border-indigo-200">
-            JD
-          </div>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              className="relative h-9 w-9 rounded-full bg-blue-100 border border-blue-200 p-0 overflow-hidden"
+            >
+              <span className="text-blue-700 font-bold text-sm">
+                {adminInitial}
+              </span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel className="font-normal">
+              <div className="flex flex-col space-y-1">
+                <p className="text-sm font-medium leading-none">{adminName}</p>
+                <p className="text-xs leading-none text-muted-foreground">
+                  {adminEmail}
+                </p>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="cursor-pointer">
+              <User className="mr-2 h-4 w-4" /> Meu Perfil
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-red-600 cursor-pointer focus:text-red-600"
+              onClick={() => signOut({ callbackUrl: "/" })}
+            >
+              <LogOut className="mr-2 h-4 w-4" /> Sair do Sistema
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   );

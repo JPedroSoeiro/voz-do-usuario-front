@@ -1,314 +1,270 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  Activity,
-  Flame,
-  Clock,
-  TrendingUp,
-  CheckCircle,
-  AlertCircle,
-  Loader2,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { FeedbackService } from "@/src/services/feedback";
-import { Feedback } from "@/src/types/feedback";
+import { Feedback } from "@/src/types/feedback"; // Importamos o tipo
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Loader2,
+  FileText,
+  ThumbsUp,
+  Activity,
+  BarChart,
+  PieChart,
+  TrendingUp,
+} from "lucide-react";
 
 export default function DashboardStats() {
-  const [isLoading, setIsLoading] = useState(true);
-  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
+  const [stats, setStats] = useState({
+    total: 0,
+    votes: 0,
+    pending: 0,
+    concluded: 0,
+    growth: 0,
+    byStatus: {} as Record<string, number>,
+    byCategory: {} as Record<string, number>,
+    recents: [] as Feedback[],
+  });
+  const [loading, setLoading] = useState(true);
 
-  // Carregar dados reais
   useEffect(() => {
-    const loadStats = async () => {
+    async function calculateStats() {
       try {
-        // Buscamos até 100 itens para ter uma estatística relevante
-        // isAuthenticated = false para pegar a visão global pública
-        const data = await FeedbackService.getAll(
-          1,
-          "all",
-          "all",
-          "date",
-          false,
-          100
+        const response = await FeedbackService.getAllFeedbacksAdmin({
+          limit: 100,
+          sort: "date",
+        });
+        // Forçamos o tipo aqui para garantir que o TS saiba que é uma lista de Feedbacks
+        const items: Feedback[] = response.items || [];
+
+        // 2. CÁLCULOS MATEMÁTICOS (Com tipagem explícita para corrigir os erros)
+
+        // A. Total de Votos
+        // Erro 1 e 2 resolvidos: (acc: number, item: Feedback)
+        const totalVotes = items.reduce(
+          (acc: number, item: Feedback) => acc + (item.total_votes || 0),
+          0
         );
 
-        // CORREÇÃO AQUI: Adicionado "|| []" para garantir que nunca seja undefined
-        setFeedbacks(data.items || []);
-        setTotalCount(data.total || 0);
-      } catch (error) {
-        console.error("Erro ao carregar estatísticas", error);
-        setFeedbacks([]); // Garante array vazio em caso de erro
+        // B. Contagem por Status
+        const statusCount: Record<string, number> = {};
+        // Erro 3 resolvido: (item: Feedback)
+        items.forEach((item: Feedback) => {
+          statusCount[item.status] = (statusCount[item.status] || 0) + 1;
+        });
+
+        // C. Contagem por Categoria
+        const categoryCount: Record<string, number> = {};
+        // Erro 4 resolvido: (item: Feedback)
+        items.forEach((item: Feedback) => {
+          categoryCount[item.category] =
+            (categoryCount[item.category] || 0) + 1;
+        });
+
+        // D. Crescimento Semanal
+        const now = new Date();
+        const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        // Erro 5 resolvido: (i: Feedback)
+        const thisWeekCount = items.filter(
+          (i: Feedback) => new Date(i.created_at) >= oneWeekAgo
+        ).length;
+
+        setStats({
+          total: response.total || items.length,
+          votes: totalVotes,
+          pending: statusCount["pending"] || 0,
+          concluded:
+            (statusCount["done"] || 0) + (statusCount["accepted"] || 0),
+          growth: thisWeekCount,
+          byStatus: statusCount,
+          byCategory: categoryCount,
+          recents: items.slice(0, 5),
+        });
+      } catch (err) {
+        console.error("Erro ao calcular stats:", err);
       } finally {
-        setIsLoading(false);
+        setLoading(false);
       }
-    };
-    loadStats();
+    }
+
+    calculateStats();
   }, []);
 
-  // --- CÁLCULOS DINÂMICOS ---
-
-  // Proteção extra: Se feedbacks for undefined por algum motivo, usa array vazio
-  const safeFeedbacks = feedbacks || [];
-
-  // 1. Totais
-  const totalVotes = safeFeedbacks.reduce(
-    (acc, curr) => acc + (curr.votes || 0),
-    0
-  );
-  const inProgressCount = safeFeedbacks.filter(
-    (f) => f.status === "in_progress"
-  ).length;
-  const doneCount = safeFeedbacks.filter((f) => f.status === "done").length;
-
-  // 2. Por Categoria (Agrupamento)
-  const byCategory = safeFeedbacks.reduce((acc, curr) => {
-    // Garante que a categoria exista como chave
-    const category = curr.category || "outros";
-    acc[category] = (acc[category] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  // 3. Por Status (Agrupamento)
-  const byStatus = safeFeedbacks.reduce((acc, curr) => {
-    const status = curr.status || "unknown";
-    acc[status] = (acc[status] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  // 4. Mais Votados (Top 5)
-  const topVoted = [...safeFeedbacks]
-    .sort((a, b) => (b.votes || 0) - (a.votes || 0))
-    .slice(0, 5);
-
-  // Tradução de labels para exibição
-  const translateStatus = (s: string) => {
-    const map: any = {
-      pending: "Pendente",
-      accepted: "Aceito",
-      done: "Concluído",
-      rejected: "Rejeitado",
-      in_progress: "Em Progresso",
-      unknown: "Desconhecido",
-    };
-    return map[s] || s;
-  };
-  const translateCategory = (c: string) => {
-    const map: any = {
-      improvement: "Melhoria",
-      feature: "Funcionalidade",
-      bug: "Bug",
-      outros: "Outros",
-    };
-    return map[c] || c;
-  };
-
-  if (isLoading) {
+  if (loading)
     return (
-      <div className="flex justify-center items-center h-40 text-blue-600">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="flex justify-center p-8">
+        <Loader2 className="animate-spin h-8 w-8 text-blue-600" />
       </div>
     );
-  }
 
   return (
-    <>
-      {/* --- PRIMEIRA FILEIRA: CARDS DE RESUMO --- */}
+    <div className="space-y-6">
+      {/* CARDS DE TOTAIS */}
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-gray-500">
+              Total Feedbacks
+            </CardTitle>
+            <FileText className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.total}</div>
+          </CardContent>
+        </Card>
 
-      {/* Total Feedbacks */}
-      <div className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-100">
-        <div className="p-5">
-          <div className="flex items-center">
-            <div className="shrink-0 bg-blue-100 rounded-md p-3">
-              <Activity className="h-6 w-6 text-blue-600" />
-            </div>
-            <div className="ml-5 w-0 flex-1">
-              <dl>
-                <dt className="text-sm font-medium text-gray-500 truncate">
-                  Total de Feedbacks
-                </dt>
-                <dd>
-                  <div className="text-2xl font-bold text-gray-900">
-                    {totalCount}
-                  </div>
-                </dd>
-              </dl>
-            </div>
-          </div>
-        </div>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-gray-500">
+              Votos Totais
+            </CardTitle>
+            <ThumbsUp className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.votes}</div>
+            <p className="text-xs text-gray-400 mt-1">Soma calculada</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-gray-500">
+              Esta Semana
+            </CardTitle>
+            <TrendingUp className="h-4 w-4 text-emerald-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">+{stats.growth}</div>
+            <p className="text-xs text-gray-400">Novos itens (7 dias)</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-gray-500">
+              Pendentes
+            </CardTitle>
+            <Activity className="h-4 w-4 text-orange-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.pending}</div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Total Votos */}
-      <div className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-100">
-        <div className="p-5">
-          <div className="flex items-center">
-            <div className="shrink-0 bg-red-100 rounded-md p-3">
-              <Flame className="h-6 w-6 text-red-600" />
-            </div>
-            <div className="ml-5 w-0 flex-1">
-              <dl>
-                <dt className="text-sm font-medium text-gray-500 truncate">
-                  Total de Votos
-                </dt>
-                <dd>
-                  <div className="text-2xl font-bold text-gray-900">
-                    {totalVotes}
-                  </div>
-                </dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Em Progresso */}
-      <div className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-100">
-        <div className="p-5">
-          <div className="flex items-center">
-            <div className="shrink-0 bg-yellow-100 rounded-md p-3">
-              <Clock className="h-6 w-6 text-yellow-600" />
-            </div>
-            <div className="ml-5 w-0 flex-1">
-              <dl>
-                <dt className="text-sm font-medium text-gray-500 truncate">
-                  Em Progresso
-                </dt>
-                <dd>
-                  <div className="text-2xl font-bold text-gray-900">
-                    {inProgressCount}
-                  </div>
-                </dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Concluídos */}
-      <div className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-100">
-        <div className="p-5">
-          <div className="flex items-center">
-            <div className="shrink-0 bg-green-100 rounded-md p-3">
-              <CheckCircle className="h-6 w-6 text-green-600" />
-            </div>
-            <div className="ml-5 w-0 flex-1">
-              <dl>
-                <dt className="text-sm font-medium text-gray-500 truncate">
-                  Concluídos
-                </dt>
-                <dd>
-                  <div className="text-2xl font-bold text-gray-900">
-                    {doneCount}
-                  </div>
-                </dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* --- SEGUNDA FILEIRA: LISTAS DETALHADAS --- */}
-
-      {/* Por Categoria */}
-      <div className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-100 lg:col-span-2">
-        <div className="p-5">
-          <h3 className="text-lg font-bold text-blue-900 mb-4 flex items-center gap-2">
-            <TrendingUp className="h-5 w-5" /> Por Categoria
-          </h3>
-          <div className="space-y-3">
-            {Object.keys(byCategory).length === 0 ? (
-              <span className="text-gray-400 text-sm">Sem dados.</span>
-            ) : (
-              Object.entries(byCategory).map(([cat, count]) => (
-                <div
-                  key={cat}
-                  className="flex justify-between text-sm font-medium text-gray-600 border-b border-gray-50 pb-2 last:border-0"
-                >
-                  <span className="capitalize flex items-center gap-2">
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        cat === "bug"
-                          ? "bg-red-400"
-                          : cat === "feature"
-                          ? "bg-purple-400"
-                          : "bg-blue-400"
-                      }`}
-                    ></span>
-                    {translateCategory(cat)}
-                  </span>
-                  <span className="bg-gray-100 px-2 py-0.5 rounded-full text-xs text-gray-800">
-                    {count}
-                  </span>
-                </div>
-              ))
+      {/* GRÁFICOS */}
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* GRÁFICO 1: STATUS */}
+        <Card className="col-span-1">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Por Status</CardTitle>
+            <BarChart className="h-4 w-4 text-gray-400" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {Object.keys(stats.byStatus).length === 0 && (
+              <p className="text-sm text-gray-400">Sem dados.</p>
             )}
-          </div>
-        </div>
-      </div>
-
-      {/* Por Status */}
-      <div className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-100 lg:col-span-2">
-        <div className="p-5">
-          <h3 className="text-lg font-bold text-blue-900 mb-4 flex items-center gap-2">
-            <Activity className="h-5 w-5" /> Por Status
-          </h3>
-          <div className="space-y-3">
-            {Object.keys(byStatus).length === 0 ? (
-              <span className="text-gray-400 text-sm">Sem dados.</span>
-            ) : (
-              Object.entries(byStatus).map(([st, count]) => (
-                <div
-                  key={st}
-                  className="flex justify-between text-sm font-medium text-gray-600 border-b border-gray-50 pb-2 last:border-0"
-                >
-                  <span className="capitalize">{translateStatus(st)}</span>
-                  <span className="bg-gray-100 px-2 py-0.5 rounded-full text-xs text-gray-800">
-                    {count}
+            {Object.entries(stats.byStatus).map(([status, count]) => (
+              <div key={status} className="space-y-1">
+                <div className="flex justify-between text-xs uppercase font-semibold text-gray-500">
+                  <span>
+                    {status === "in_progress" ? "Em Progresso" : status}
                   </span>
+                  <span>{count}</span>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* --- TERCEIRA FILEIRA: MAIS VOTADOS --- */}
-
-      <div className="bg-white overflow-hidden shadow-sm rounded-lg border border-gray-100 lg:col-span-4">
-        <div className="p-5">
-          <h3 className="text-lg font-bold text-blue-900 mb-4 flex items-center gap-2">
-            <Flame className="h-5 w-5 text-red-500" /> Feedbacks Mais Votados
-          </h3>
-
-          <div className="space-y-4">
-            {topVoted.length === 0 ? (
-              <div className="text-center py-4 text-gray-400">
-                Nenhum feedback com votos ainda.
+                <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-600"
+                    style={{ width: `${(count / (stats.total || 1)) * 100}%` }}
+                  />
+                </div>
               </div>
-            ) : (
-              topVoted.map((feedback) => (
-                <div
-                  key={feedback.id}
-                  className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-sm font-medium text-gray-900 border-b border-gray-100 last:border-0 pb-3 last:pb-0 gap-2"
-                >
-                  <span className="truncate max-w-md" title={feedback.title}>
-                    {feedback.title}
-                  </span>
-                  <div className="flex items-center gap-x-4 w-full sm:w-auto justify-between sm:justify-end">
-                    <span className="text-blue-600 font-bold bg-blue-50 px-2 py-1 rounded text-xs">
-                      {feedback.votes} votos
-                    </span>
-                    {/* Botão de Editar removido pois é apenas visualização estatística rápida, 
-                                mas se quiser pode descomentar e linkar com o modal de edição */}
-                    {/* <Button size="sm" variant="outline" className="h-7 text-xs">Ver</Button> */}
+            ))}
+          </CardContent>
+        </Card>
+
+        {/* GRÁFICO 2: CATEGORIA */}
+        <Card className="col-span-1">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Por Categoria</CardTitle>
+            <PieChart className="h-4 w-4 text-gray-400" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {Object.keys(stats.byCategory).length === 0 && (
+              <p className="text-sm text-gray-400">Sem dados.</p>
+            )}
+            {Object.entries(stats.byCategory).map(([category, count]) => {
+              const colorClass =
+                category === "bug"
+                  ? "bg-red-500"
+                  : category === "feature"
+                  ? "bg-purple-500"
+                  : category === "improvement"
+                  ? "bg-blue-500"
+                  : "bg-gray-500";
+
+              return (
+                <div key={category} className="flex items-center gap-3">
+                  <div className={`w-3 h-3 rounded-full ${colorClass}`} />
+                  <div className="flex-1 space-y-1">
+                    <div className="flex justify-between text-sm">
+                      <span className="capitalize text-gray-700">
+                        {category}
+                      </span>
+                      <span className="font-bold">{count}</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-gray-100 rounded-full">
+                      <div
+                        className={`h-full rounded-full ${colorClass}`}
+                        style={{
+                          width: `${(count / (stats.total || 1)) * 100}%`,
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+
+        {/* LISTA: RECENTES */}
+        <Card className="col-span-1 md:col-span-2 lg:col-span-1">
+          <CardHeader>
+            <CardTitle className="text-base">Recentes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-3">
+              {stats.recents.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex flex-col border-b pb-2 last:border-0"
+                >
+                  <span
+                    className="font-medium text-sm truncate"
+                    title={item.title}
+                  >
+                    {item.title}
+                  </span>
+                  <div className="flex justify-between items-center mt-1">
+                    <span className="text-[10px] text-gray-400">
+                      {new Date(item.created_at).toLocaleDateString()}
+                    </span>
+                    <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded capitalize">
+                      {item.status}
+                    </span>
+                  </div>
+                </li>
+              ))}
+              {stats.recents.length === 0 && (
+                <p className="text-gray-400 text-sm">
+                  Nenhum feedback recente.
+                </p>
+              )}
+            </ul>
+          </CardContent>
+        </Card>
       </div>
-    </>
+    </div>
   );
 }

@@ -36,6 +36,7 @@ import EditFeedback from "./EditFeedback";
 import { FeedbackService } from "@/src/services/feedback";
 import { Feedback } from "@/src/types/feedback";
 import { UserProfile } from "@/src/types/auth";
+import { useRouter } from "next/navigation";
 
 // 👇 IMPORTAMOS O NOVO MODAL AQUI
 import {
@@ -55,6 +56,7 @@ export default function HomepageComponent() {
   // @ts-ignore
   const isPendingVerification =
     (session as any)?.error === "EMAIL_VERIFICATION_REQUIRED";
+  const router = useRouter();
 
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -79,15 +81,50 @@ export default function HomepageComponent() {
 
   const isAuthenticated = status === "authenticated" && !isPendingVerification;
 
+  useEffect(() => {
+    if (status === "authenticated") {
+      // @ts-ignore
+      const userRole = session?.user?.role;
+
+      if (userRole === "admin") {
+        console.log("Admin na área pública? Redirecionando para Dashboard...");
+        router.push("/dashboard");
+      }
+    }
+  }, [status, session, router]);
+
   const userDisplay =
     isAuthenticated && session?.user
       ? {
           name: session.user.name || "Usuário",
           email: session.user.email,
           initial: session.user.name?.[0]?.toUpperCase() || "U",
+          // Adiciona um ID fictício se não tiver, para evitar erros
+          id: (session as any).id_token || "user-session-id",
         }
       : null;
 
+  // Popula o currentUser direto da sessão do Google (sem chamar o backend)
+  useEffect(() => {
+    if (isAuthenticated && session?.user) {
+      setCurrentUser({
+        // @ts-ignore
+        id: (session as any).user?.id || session.user.email || "user-id",
+        email: session.user.email || "",
+        name: session.user.name || "",
+        // @ts-ignore
+        role: (session as any).user?.role || "user",
+
+        // 👇 ADICIONAMOS ESTES DOIS CAMPOS PARA O TYPESCRIPT FICAR FELIZ
+        avatar: "",
+        created_at: new Date().toISOString(), // Data fictícia de "agora"
+      });
+    } else {
+      setCurrentUser(null);
+    }
+  }, [session, isAuthenticated]);
+
+  /*
   useEffect(() => {
     if (isAuthenticated) {
       api
@@ -98,6 +135,7 @@ export default function HomepageComponent() {
       setCurrentUser(null);
     }
   }, [isAuthenticated]);
+*/
 
   const fetchFeedbacks = useCallback(async () => {
     if (status === "loading") return;

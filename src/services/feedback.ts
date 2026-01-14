@@ -10,7 +10,7 @@ export const FeedbackService = {
     status = "all",
     sort = "date",
     isAuthenticated = false,
-    limit = 4 // Agora suporta limite dinâmico
+    limit = 4
   ): Promise<PaginatedResponse<Feedback>> => {
     const offset = (page - 1) * limit;
     const endpoint = isAuthenticated ? "/feedback/feed" : "/feedback";
@@ -28,6 +28,7 @@ export const FeedbackService = {
   getMine: async (page = 1): Promise<PaginatedResponse<Feedback>> => {
     const limit = 4;
     const offset = (page - 1) * limit;
+    // Rota para pegar os feedbacks do próprio usuário
     const response = await api.get("/feedback/my-feedbacks", {
       params: { limit, offset },
     });
@@ -50,15 +51,9 @@ export const FeedbackService = {
   },
 
   delete: async (id: string) => {
-    // Tenta primeiro a rota de admin, se falhar (403), tenta a de usuário comum
-    // Na prática, o backend deveria ter uma rota unificada ou tratarmos isso melhor,
-    // mas para simplificar:
     try {
-      // Tenta deletar como dono
       return await api.delete(`/feedback/${id}`);
     } catch (error) {
-      // Se der erro, tenta deletar como admin (se a rota for diferente no seu backend)
-      // Se a rota for a mesma, o erro acima já é o definitivo.
       throw error;
     }
   },
@@ -71,25 +66,19 @@ export const FeedbackService = {
     return api.delete(`/feedback/${id}/vote`);
   },
 
-  // --- ADMIN (MODERAÇÃO) ---
+  // --- ADMIN (MODERAÇÃO & ESTATÍSTICAS) ---
+
+  // 👇 NOVA FUNÇÃO: Busca o resumo para os Cards e Gráficos do Dashboard
+  getDashboardSummary: async () => {
+    const { data } = await api.get("/admin/dashboard/summary");
+    return data;
+  },
 
   getPending: async () => {
     const response = await api.get("/admin/feedback/pending");
     return Array.isArray(response.data)
       ? response.data
       : response.data.items || [];
-  },
-
-  updateStatus: async (
-    id: string,
-    status: "accepted" | "rejected" | "in_progress" | "done"
-  ) => {
-    // Nota: Verifique se sua rota de admin no backend é exatamente essa
-    return api.put(`/admin/feedback/${id}/status`, { status });
-  },
-
-  updatePriority: async (id: string, priority: "low" | "medium" | "high") => {
-    return api.put(`/admin/feedback/${id}/priority`, { priority });
   },
 
   getAllAdmin: async (
@@ -108,18 +97,41 @@ export const FeedbackService = {
     if (category !== "all") params.append("category", category);
     if (search) params.append("search", search);
 
-    // Chama a rota do backend /admin/feedbacks que criamos anteriormente
-    const response = await api.get(`/admin/feedbacks?${params.toString()}`);
+    // Rota correta (singular)
+    const response = await api.get(`/admin/feedback?${params.toString()}`);
     return response.data;
   },
 
   // Admin deleta qualquer um
   deleteAdmin: async (id: string) => {
-    return api.delete(`/admin/feedbacks/${id}`);
+    return api.delete(`/admin/feedback/${id}`);
   },
 
   // Admin edita qualquer um
   updateAdmin: async (id: string, data: any) => {
-    return api.put(`/admin/feedbacks/${id}`, data);
+    return api.put(`/admin/feedback/${id}`, data);
+  },
+
+  getAllFeedbacksAdmin: async (params: any) => {
+    // params = { search, status, category, priority, sort, page, limit }
+    const { data } = await api.get("/admin/feedback", { params });
+    return data;
+  },
+
+  // 👇 NOVAS: Ações de Moderação (Req. 7)
+  updateStatus: async (id: string, status: string) => {
+    const { data } = await api.put(`/admin/feedback/${id}/status`, { status });
+    return data;
+  },
+
+  updatePriority: async (id: string, priority: string) => {
+    const { data } = await api.put(`/admin/feedback/${id}/priority`, {
+      priority,
+    });
+    return data;
+  },
+
+  deleteFeedback: async (id: string) => {
+    await api.delete(`/admin/feedback/${id}`);
   },
 };

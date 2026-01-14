@@ -50,15 +50,6 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        <SidebarFooter className="bg-white p-4 border-t">
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-3 text-red-600 hover:text-red-700 hover:bg-red-50"
-          >
-            <IoMdExit className="h-5 w-5" />
-            <span className="text-base font-medium">Sair</span>
-          </Button>
-        </SidebarFooter>
       </SidebarContent>
     </Sidebar>
   );
