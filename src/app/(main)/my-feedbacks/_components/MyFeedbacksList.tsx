@@ -40,6 +40,12 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -56,7 +62,6 @@ const categoryMap: Record<string, string> = {
   improvement: "Melhoria",
   other: "Outro",
 };
-
 const statusMap: Record<string, string> = {
   pending: "Pendente",
   in_review: "Em Análise",
@@ -74,9 +79,7 @@ export default function MyFeedbacksList() {
   const [loading, setLoading] = useState(true);
   const [totalItems, setTotalItems] = useState(0);
 
-  // Filtros e Paginação
   const [searchTerm, setSearchTerm] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 3;
@@ -85,6 +88,9 @@ export default function MyFeedbacksList() {
   const [editTitle, setEditTitle] = useState("");
   const [editDesc, setEditDesc] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [viewingDescription, setViewingDescription] = useState<Feedback | null>(
+    null
+  );
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/");
@@ -102,7 +108,7 @@ export default function MyFeedbacksList() {
       setItems(res.items || []);
       setTotalItems(res.total || 0);
     } catch (error) {
-      console.error("Erro ao buscar meus feedbacks", error);
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -147,6 +153,12 @@ export default function MyFeedbacksList() {
 
   const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
 
+  // 👇 FUNÇÃO ADICIONADA
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   if (loading && items.length === 0)
     return (
       <div className="flex justify-center p-20">
@@ -163,11 +175,12 @@ export default function MyFeedbacksList() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Meus Feedbacks</h1>
-            <p className="text-sm text-gray-500">Acompanhe suas sugestões.</p>
+            <p className="text-sm text-gray-500">
+              Acompanhe suas sugestões enviadas.
+            </p>
           </div>
         </div>
 
-        {/* FILTROS PADRONIZADOS */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 w-full bg-white p-3 rounded-lg border shadow-sm">
           <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -181,26 +194,7 @@ export default function MyFeedbacksList() {
               }}
             />
           </div>
-
           <div className="grid grid-cols-2 gap-2">
-            <Select
-              value={categoryFilter}
-              onValueChange={(val) => {
-                setCategoryFilter(val);
-                setCurrentPage(1);
-              }}
-            >
-              <SelectTrigger className="w-full h-10 bg-white border-gray-200">
-                <SelectValue placeholder="Todas" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas</SelectItem>
-                <SelectItem value="improvement">Melhoria</SelectItem>
-                <SelectItem value="feature">Funcionalidade</SelectItem>
-                <SelectItem value="bug">Bug</SelectItem>
-              </SelectContent>
-            </Select>
-
             <Select
               value={statusFilter}
               onValueChange={(val) => {
@@ -209,10 +203,10 @@ export default function MyFeedbacksList() {
               }}
             >
               <SelectTrigger className="w-full h-10 bg-white border-gray-200">
-                <SelectValue placeholder="Todos" />
+                <SelectValue placeholder="Todos os Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="all">Todos os Status</SelectItem>
                 <SelectItem value="pending">Pendente</SelectItem>
                 <SelectItem value="in_progress">Em Andamento</SelectItem>
                 <SelectItem value="done">Concluído</SelectItem>
@@ -222,7 +216,7 @@ export default function MyFeedbacksList() {
         </div>
 
         <div className="grid gap-4 min-h-350px">
-          {items.length === 0 && !loading ? (
+          {items.length === 0 ? (
             <div className="text-center py-16 bg-white rounded-lg border border-dashed text-gray-500">
               Nenhum feedback encontrado.
             </div>
@@ -232,11 +226,16 @@ export default function MyFeedbacksList() {
                 key={item.id}
                 className={`${
                   item.status !== "pending" ? "bg-gray-50/50" : "bg-white"
-                }`}
+                } hover:border-blue-200 transition-all`}
               >
                 <CardHeader className="flex flex-row items-start justify-between pb-2">
-                  <div className="space-y-1">
-                    <h3 className="font-bold text-gray-800">{item.title}</h3>
+                  <div
+                    className="space-y-1 cursor-pointer flex-1"
+                    onClick={() => setViewingDescription(item)}
+                  >
+                    <h3 className="font-bold text-gray-800 hover:text-blue-600">
+                      {item.title}
+                    </h3>
                     <div className="flex gap-2">
                       <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 uppercase">
                         {categoryMap[item.category] || item.category}
@@ -258,7 +257,10 @@ export default function MyFeedbacksList() {
                         size="icon"
                         variant="ghost"
                         className="h-8 w-8 text-blue-600"
-                        onClick={() => handleEditClick(item)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditClick(item);
+                        }}
                       >
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -266,7 +268,10 @@ export default function MyFeedbacksList() {
                         size="icon"
                         variant="ghost"
                         className="h-8 w-8 text-red-600"
-                        onClick={() => setDeleteId(item.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteId(item.id);
+                        }}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -277,10 +282,15 @@ export default function MyFeedbacksList() {
                     </div>
                   )}
                 </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-gray-600">{item.description}</p>
+                <CardContent
+                  className="cursor-pointer"
+                  onClick={() => setViewingDescription(item)}
+                >
+                  <p className="text-sm text-gray-600 line-clamp-2">
+                    "{item.description}"
+                  </p>
                 </CardContent>
-                <CardFooter className="pt-0 text-[10px] text-gray-400 flex justify-between uppercase font-semibold">
+                <CardFooter className="pt-0 text-[10px] text-gray-400 flex justify-between font-semibold">
                   <span>Votos: {item.total_votes}</span>
                   <span>{new Date(item.created_at).toLocaleDateString()}</span>
                 </CardFooter>
@@ -298,10 +308,12 @@ export default function MyFeedbacksList() {
                     href="#"
                     onClick={(e) => {
                       e.preventDefault();
-                      setCurrentPage((p) => Math.max(1, p - 1));
+                      handlePageChange(Math.max(1, currentPage - 1));
                     }}
                     className={
-                      currentPage === 1 ? "pointer-events-none opacity-50" : ""
+                      currentPage === 1
+                        ? "pointer-events-none opacity-50"
+                        : "cursor-pointer"
                     }
                   />
                 </PaginationItem>
@@ -313,12 +325,12 @@ export default function MyFeedbacksList() {
                     href="#"
                     onClick={(e) => {
                       e.preventDefault();
-                      setCurrentPage((p) => Math.min(totalPages, p + 1));
+                      handlePageChange(Math.min(totalPages, currentPage + 1));
                     }}
                     className={
                       currentPage === totalPages
                         ? "pointer-events-none opacity-50"
-                        : ""
+                        : "cursor-pointer"
                     }
                   />
                 </PaginationItem>
@@ -327,6 +339,20 @@ export default function MyFeedbacksList() {
           </div>
         )}
       </div>
+
+      <Dialog
+        open={!!viewingDescription}
+        onOpenChange={() => setViewingDescription(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{viewingDescription?.title}</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4 text-sm text-gray-600 whitespace-pre-wrap bg-blue-50/30 p-4 rounded-lg border">
+            {viewingDescription?.description}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {editingItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">

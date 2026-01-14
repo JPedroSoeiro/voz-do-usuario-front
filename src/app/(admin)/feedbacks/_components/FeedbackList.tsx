@@ -1,10 +1,30 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { FeedbackService } from "@/src/services/feedback";
-import { Feedback } from "@/src/types/feedback";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useState, useEffect, useCallback } from "react";
+import {
+  Search,
+  MoreHorizontal,
+  Trash2,
+  Eye,
+  MessageSquare,
+} from "lucide-react";
+
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -13,18 +33,25 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Loader2,
-  Trash2,
-  Search,
-  X,
-  User,
-  Mail,
-  FileText,
-  Calendar,
-  Hash,
-} from "lucide-react";
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
-// 👇 TRADUÇÕES PADRONIZADAS (Iguais ao formulário do usuário)
+import { FeedbackService } from "@/src/services/feedback";
+import { Feedback } from "@/src/types/feedback";
+
 const categoryMap: Record<string, string> = {
   bug: "Bug",
   feature: "Funcionalidade",
@@ -32,352 +59,390 @@ const categoryMap: Record<string, string> = {
   other: "Outro",
 };
 
-const statusMap: Record<string, string> = {
-  pending: "Pendente",
-  in_review: "Em Análise",
-  accepted: "Aceito",
-  rejected: "Recusado",
-  in_progress: "Em Andamento", // Ajustado para português mais natural
-  done: "Concluído",
+const statusMap: Record<string, { label: string; color: string }> = {
+  pending: {
+    label: "Pendente",
+    color: "bg-yellow-50 text-yellow-700 border-yellow-100",
+  },
+  in_review: {
+    label: "Em Análise",
+    color: "bg-blue-50 text-blue-700 border-blue-100",
+  },
+  accepted: {
+    label: "Aceito",
+    color: "bg-purple-50 text-purple-700 border-purple-100",
+  },
+  rejected: {
+    label: "Recusado",
+    color: "bg-red-50 text-red-700 border-red-100",
+  },
+  in_progress: {
+    label: "Em Andamento",
+    color: "bg-orange-50 text-orange-700 border-orange-100",
+  },
+  done: {
+    label: "Concluído",
+    color: "bg-green-50 text-green-700 border-green-100",
+  },
 };
 
-const priorityMap: Record<string, string> = {
-  low: "Baixa",
-  medium: "Média",
-  high: "Alta",
+const priorityMap: Record<string, { label: string; color: string }> = {
+  low: { label: "Baixa", color: "bg-gray-100 text-gray-600" },
+  medium: { label: "Média", color: "bg-blue-100 text-blue-600" },
+  high: { label: "Alta", color: "bg-orange-100 text-orange-600" },
+  urgent: { label: "Urgente", color: "bg-red-100 text-red-600" },
 };
 
 export default function FeedbackList() {
-  const [items, setItems] = useState<Feedback[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Estado para o Modal
-  const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(
-    null
-  );
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [viewingFeedback, setViewingFeedback] = useState<Feedback | null>(null);
+  const itemsPerPage = 6;
 
-  // Filtros
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const fetchAdminFeedbacks = useCallback(async () => {
+    setIsLoading(true);
     try {
-      const res = await FeedbackService.getAllFeedbacksAdmin({
-        search,
-        status: status === "all" ? undefined : status,
-        limit: 10,
-        offset: (page - 1) * 10,
-        sort: "date",
+      const data = await FeedbackService.getAllFeedbacksAdmin({
+        page: currentPage,
+        limit: itemsPerPage,
+        search: searchTerm,
+        status: statusFilter !== "all" ? statusFilter : undefined,
       });
-      setItems(res.items || []);
-      setTotalPages(Math.ceil((res.total || 0) / 10));
+      setFeedbacks(data.items || []);
+      setTotalItems(data.total || 0);
     } catch (error) {
-      console.error("Erro ao listar feedbacks:", error);
+      console.error("Erro ao carregar feedbacks:", error);
+      setFeedbacks([]);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
-  }, [page, status, search]);
+  }, [currentPage, searchTerm, statusFilter]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchAdminFeedbacks();
+  }, [fetchAdminFeedbacks]);
 
-  // Ações
-  const handleStatus = async (id: string, val: string) => {
+  const handleStatusChange = async (id: string, newStatus: string) => {
     try {
-      await FeedbackService.updateStatus(id, val);
-      fetchData();
-    } catch (e) {
-      alert("Erro ao atualizar status");
+      await FeedbackService.updateStatus(id, newStatus);
+      fetchAdminFeedbacks();
+    } catch (error) {
+      alert("Erro ao atualizar status.");
     }
   };
 
-  const handlePriority = async (id: string, val: string) => {
+  const handlePriorityChange = async (id: string, newPriority: string) => {
     try {
-      await FeedbackService.updatePriority(id, val);
-      fetchData();
-    } catch (e) {
-      alert("Erro ao atualizar prioridade");
+      await FeedbackService.updatePriority(id, newPriority);
+      fetchAdminFeedbacks();
+    } catch (error) {
+      alert("Erro ao atualizar prioridade.");
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Excluir permanentemente?")) return;
-    try {
-      await FeedbackService.deleteFeedback(id);
-      fetchData();
-    } catch (e) {
-      alert("Erro ao excluir");
-    }
+  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* FILTROS */}
-      <div className="flex flex-col md:flex-row gap-3 bg-white p-4 rounded-lg border shadow-sm">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+      <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-4 rounded-lg border shadow-sm">
+        <div className="relative w-full md:w-96">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <Input
-            placeholder="Buscar por título..."
-            className="pl-9 bg-white"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Pesquisar..."
+            className="pl-10 h-10"
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(1);
+            }}
           />
         </div>
-
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger className="w-48 bg-white">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
-            <SelectItem value="pending">Pendente</SelectItem>
-            <SelectItem value="accepted">Aceito</SelectItem>
-            <SelectItem value="in_progress">Em Andamento</SelectItem>
-            <SelectItem value="done">Concluído</SelectItem>
-            <SelectItem value="rejected">Recusado</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <Button onClick={() => setPage(1)}>Filtrar</Button>
+        <div className="flex gap-2 w-full md:w-auto">
+          <Select
+            value={statusFilter}
+            onValueChange={(val) => {
+              setStatusFilter(val);
+              setCurrentPage(1);
+            }}
+          >
+            <SelectTrigger className="w-full md:w-44 bg-white border-gray-200">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os Status</SelectItem>
+              <SelectItem value="pending">Pendentes</SelectItem>
+              <SelectItem value="accepted">Aceitos</SelectItem>
+              <SelectItem value="done">Concluídos</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" onClick={() => fetchAdminFeedbacks()}>
+            Atualizar
+          </Button>
+        </div>
       </div>
 
-      {/* TABELA */}
-      <div className="bg-white border rounded-md overflow-hidden shadow-sm">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-gray-100 text-gray-600 font-medium border-b">
-            <tr>
-              <th className="p-4">Feedback (Clique para ver)</th>
-              <th className="p-4">Categoria</th>
-              <th className="p-4">Votos</th>
-              <th className="p-4">Status</th>
-              <th className="p-4">Prioridade</th>
-              <th className="p-4 w-10"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={6} className="p-8 text-center">
-                  <Loader2 className="animate-spin inline mr-2" />
+      {/* TABELA COM FIXO DE LARGURA (table-fixed) */}
+      <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+        <Table className="table-fixed w-full">
+          <TableHeader>
+            <TableRow className="bg-gray-50/50">
+              {/* Definimos larguras fixas para controlar o espaço */}
+              <TableHead className="w-[45%]">Feedback</TableHead>
+              <TableHead className="w-[15%]">Categoria</TableHead>
+              <TableHead className="w-[15%]">Status</TableHead>
+              <TableHead className="w-[15%]">Prioridade</TableHead>
+              <TableHead className="w-[10%] text-right pr-6">Ações</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-10">
                   Carregando...
-                </td>
-              </tr>
-            ) : items.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="p-12 text-center text-gray-400">
-                  Nenhum feedback encontrado.
-                </td>
-              </tr>
-            ) : (
-              items.map((item) => (
-                <tr
-                  key={item.id}
-                  className="border-b last:border-0 hover:bg-gray-50 transition-colors"
+                </TableCell>
+              </TableRow>
+            ) : feedbacks.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={5}
+                  className="text-center py-10 text-gray-500"
                 >
-                  <td
-                    className="p-4 max-w-xs group cursor-pointer"
-                    onClick={() => setSelectedFeedback(item)}
+                  Nenhum feedback encontrado.
+                </TableCell>
+              </TableRow>
+            ) : (
+              feedbacks.map((item) => (
+                <TableRow
+                  key={item.id}
+                  className="hover:bg-gray-50/50 transition-colors"
+                >
+                  {/* CÉLULA DO TÍTULO COM LIMITAÇÃO (TRUNCATE) */}
+                  <TableCell
+                    className="cursor-pointer group overflow-hidden"
+                    onClick={() => setViewingFeedback(item)}
                   >
-                    <div
-                      className="font-semibold text-gray-800 truncate group-hover:text-blue-600 transition-colors"
-                      title="Clique para detalhes"
-                    >
-                      {item.title}
+                    <div className="flex flex-col w-full overflow-hidden">
+                      <span className="font-bold text-gray-900 truncate group-hover:text-blue-600 transition-colors block">
+                        {item.title}
+                      </span>
+                      <span className="text-[10px] text-gray-400 truncate block">
+                        {item.description}
+                      </span>
                     </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {new Date(item.created_at).toLocaleDateString()}
-                    </div>
-                  </td>
-                  <td className="p-4">
-                    {/* Exibe a tradução correta */}
-                    <span className="px-2 py-1 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100 whitespace-nowrap">
+                  </TableCell>
+
+                  <TableCell>
+                    <span className="text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-md border border-blue-100 uppercase tracking-tighter whitespace-nowrap">
                       {categoryMap[item.category] || item.category}
                     </span>
-                  </td>
-                  <td className="p-4 font-mono text-gray-600">
-                    {item.total_votes}
-                  </td>
+                  </TableCell>
 
-                  {/* Select Status */}
-                  <td className="p-4">
-                    <select
-                      className="bg-white border border-gray-300 rounded px-2 py-1 text-xs w-full cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
-                      value={item.status}
-                      onChange={(e) => handleStatus(item.id, e.target.value)}
-                    >
-                      {Object.entries(statusMap).map(([key, label]) => (
-                        <option key={key} value={key}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
+                  <TableCell>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <Select
+                        defaultValue={item.status}
+                        onValueChange={(val) =>
+                          handleStatusChange(item.id, val)
+                        }
+                      >
+                        <SelectTrigger
+                          className={`h-8 text-[10px] font-bold w-full max-w-130px ${
+                            statusMap[item.status]?.color
+                          }`}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(statusMap).map(([key, value]) => (
+                            <SelectItem
+                              key={key}
+                              value={key}
+                              className="text-xs"
+                            >
+                              {value.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </TableCell>
 
-                  {/* Select Prioridade */}
-                  <td className="p-4">
-                    <select
-                      className="bg-white border border-gray-300 rounded px-2 py-1 text-xs w-full cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
-                      value={item.priority || "low"}
-                      onChange={(e) => handlePriority(item.id, e.target.value)}
-                    >
-                      {Object.entries(priorityMap).map(([key, label]) => (
-                        <option key={key} value={key}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
+                  <TableCell>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <Select
+                        defaultValue={item.priority || "low"}
+                        onValueChange={(val) =>
+                          handlePriorityChange(item.id, val)
+                        }
+                      >
+                        <SelectTrigger
+                          className={`h-8 text-[10px] font-bold w-full max-w-110px ${
+                            priorityMap[item.priority || "low"]?.color
+                          }`}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(priorityMap).map(([key, value]) => (
+                            <SelectItem
+                              key={key}
+                              value={key}
+                              className="text-xs"
+                            >
+                              {value.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </TableCell>
 
-                  <td className="p-4 text-right">
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      className="text-gray-400 hover:text-red-600 p-2 rounded hover:bg-red-50 transition-colors"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
+                  <TableCell className="text-right px-6">
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            className="cursor-pointer"
+                            onClick={() => setViewingFeedback(item)}
+                          >
+                            <Eye className="h-4 w-4 mr-2" /> Ver Detalhes
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="text-red-600 cursor-pointer">
+                            <Trash2 className="h-4 w-4 mr-2" /> Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </TableCell>
+                </TableRow>
               ))
             )}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       {/* PAGINAÇÃO */}
-      <div className="flex justify-end gap-2 pt-2">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={page === 1}
-          onClick={() => setPage((p) => p - 1)}
-        >
-          Anterior
-        </Button>
-        <div className="flex items-center text-sm text-gray-500 px-2">
-          Página {page} de {totalPages || 1}
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={page >= totalPages}
-          onClick={() => setPage((p) => p + 1)}
-        >
-          Próxima
-        </Button>
-      </div>
+      {totalPages > 1 && (
+        <div className="flex justify-between items-center px-4 py-4 border-t bg-white rounded-b-lg">
+          <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+            Página {currentPage} de {totalPages}
+          </span>
+          <Pagination className="w-auto mx-0">
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handlePageChange(Math.max(1, currentPage - 1));
+                  }}
+                  className={
+                    currentPage === 1
+                      ? "pointer-events-none opacity-50"
+                      : "cursor-pointer"
+                  }
+                />
+              </PaginationItem>
 
-      {/* MODAL DETALHADO */}
-      {selectedFeedback && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
-            {/* Cabeçalho */}
-            <div className="flex justify-between items-start p-6 border-b bg-gray-50 sticky top-0">
-              <div>
-                <h2 className="text-xl font-bold text-gray-800 max-w-350px">
-                  {selectedFeedback.title}
-                </h2>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200">
-                    {categoryMap[selectedFeedback.category] ||
-                      selectedFeedback.category}
-                  </span>
-                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
-                    {statusMap[selectedFeedback.status] ||
-                      selectedFeedback.status}
-                  </span>
-                  {selectedFeedback.priority && (
-                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700 border border-orange-200">
-                      Prioridade:{" "}
-                      {priorityMap[selectedFeedback.priority] ||
-                        selectedFeedback.priority}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={() => setSelectedFeedback(null)}
-                className="text-gray-400 hover:text-gray-600 p-1 hover:bg-gray-200 rounded-full transition-colors"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                (page) => (
+                  <PaginationItem key={page}>
+                    <PaginationLink
+                      href="#"
+                      isActive={currentPage === page}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handlePageChange(page);
+                      }}
+                      className="cursor-pointer"
+                    >
+                      {page}
+                    </PaginationLink>
+                  </PaginationItem>
+                )
+              )}
 
-            {/* Corpo */}
-            <div className="p-6 space-y-6">
-              {/* Descrição Completa */}
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <FileText className="h-4 w-4 text-blue-500" />
-                  Descrição do Problema / Ideia
-                </div>
-                <div className="text-sm text-gray-700 leading-relaxed bg-gray-50 p-4 rounded-md border min-h-100px whitespace-pre-wrap">
-                  {selectedFeedback.description}
-                </div>
-              </div>
-
-              {/* Dados do Autor */}
-              <div className="border-t pt-4 mt-4">
-                <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                  <User className="h-4 w-4" /> Informações do Autor
-                </h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border border-dashed">
-                  <div className="space-y-1">
-                    <span className="text-xs text-gray-500 uppercase font-bold">
-                      Nome
-                    </span>
-                    <div className="text-sm font-medium text-gray-900">
-                      {selectedFeedback.profiles?.full_name ||
-                        selectedFeedback.user_name ||
-                        "Não informado (Backend)"}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <span className="text-xs text-gray-500 uppercase font-bold flex items-center gap-1">
-                      <Mail className="h-3 w-3" /> Email
-                    </span>
-                    <div className="text-sm text-gray-600">
-                      {selectedFeedback.profiles?.email ||
-                        selectedFeedback.user_email ||
-                        "Não informado"}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1 col-span-2">
-                    <span className="text-xs text-gray-500 uppercase font-bold flex items-center gap-1">
-                      <Hash className="h-3 w-3" /> ID do Usuário (Sistema)
-                    </span>
-                    <div className="text-xs font-mono bg-white border p-1 rounded text-gray-500">
-                      {selectedFeedback.user_id}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 text-xs text-gray-400 pt-2 justify-center">
-                <Calendar className="h-3 w-3" />
-                Criado em:{" "}
-                {new Date(selectedFeedback.created_at).toLocaleString()}
-              </div>
-            </div>
-
-            {/* Rodapé */}
-            <div className="p-4 border-t bg-gray-50 flex justify-end">
-              <Button
-                onClick={() => setSelectedFeedback(null)}
-                variant="secondary"
-              >
-                Fechar
-              </Button>
-            </div>
-          </div>
+              <PaginationItem>
+                <PaginationNext
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handlePageChange(Math.min(totalPages, currentPage + 1));
+                  }}
+                  className={
+                    currentPage === totalPages
+                      ? "pointer-events-none opacity-50"
+                      : "cursor-pointer"
+                  }
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
         </div>
       )}
+
+      {/* MODAL DE DETALHES */}
+      <Dialog
+        open={!!viewingFeedback}
+        onOpenChange={() => setViewingFeedback(null)}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-blue-900 flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" /> Detalhes do Feedback
+            </DialogTitle>
+          </DialogHeader>
+          {viewingFeedback && (
+            <div className="space-y-4 pt-4">
+              <div className="space-y-1">
+                <h4 className="text-[10px] font-bold text-gray-400 uppercase">
+                  Título
+                </h4>
+                <p className="text-lg font-black text-gray-900 leading-tight">
+                  {viewingFeedback.title}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-[10px] font-bold text-gray-400 uppercase">
+                  Descrição
+                </h4>
+                <div className="bg-gray-50 p-4 rounded-lg border text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">
+                  {viewingFeedback.description}
+                </div>
+              </div>
+              <div className="flex justify-between items-center pt-2">
+                <span className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-md border border-blue-100 uppercase">
+                  {categoryMap[viewingFeedback.category]}
+                </span>
+                <p className="text-xs font-bold text-gray-400 italic">
+                  Votos: {viewingFeedback.total_votes || 0}
+                </p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

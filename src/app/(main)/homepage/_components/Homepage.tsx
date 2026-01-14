@@ -31,10 +31,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useSession, signOut, signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
-// Componentes e Serviços
 import CreateFeedback from "./CreateFeedback";
 import EditFeedback from "./EditFeedback";
 import { FeedbackService } from "@/src/services/feedback";
@@ -50,7 +55,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-// DICIONÁRIOS DE TRADUÇÃO PADRONIZADOS
 const categoryMap: Record<string, string> = {
   bug: "Bug",
   feature: "Funcionalidade",
@@ -76,19 +80,19 @@ export default function HomepageComponent() {
     (session as any)?.error === "EMAIL_VERIFICATION_REQUIRED";
   const isAuthenticated = status === "authenticated" && !isPendingVerification;
 
-  // Estados
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [totalItems, setTotalItems] = useState(0);
 
-  // Modais
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingFeedback, setEditingFeedback] = useState<Feedback | null>(null);
   const [feedbackToDelete, setFeedbackToDelete] = useState<string | null>(null);
+  const [viewingDescription, setViewingDescription] = useState<Feedback | null>(
+    null
+  );
   const [showLoginAlert, setShowLoginAlert] = useState(false);
 
-  // Filtros
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -96,7 +100,6 @@ export default function HomepageComponent() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
-  // 1. Redirecionamento de Admin
   useEffect(() => {
     // @ts-ignore
     if (isAuthenticated && session?.user?.role === "admin") {
@@ -118,7 +121,6 @@ export default function HomepageComponent() {
         }
       : null;
 
-  // 2. Busca Feedbacks
   const fetchFeedbacks = useCallback(async () => {
     if (status === "loading") return;
     setIsLoading(true);
@@ -144,11 +146,9 @@ export default function HomepageComponent() {
           sort: sortFilter,
         });
       }
-
       setFeedbacks(data.items || []);
       setTotalItems(data.total || 0);
     } catch (error) {
-      console.error("Erro ao buscar:", error);
       setFeedbacks([]);
     } finally {
       setIsLoading(false);
@@ -167,16 +167,13 @@ export default function HomepageComponent() {
     fetchFeedbacks();
   }, [fetchFeedbacks]);
 
-  // 3. Voto Otimista
   const handleVote = async (feedback: Feedback) => {
     if (!isAuthenticated) {
       setShowLoginAlert(true);
       return;
     }
-
     const previousFeedbacks = [...feedbacks];
     const isLiking = !feedback.has_voted;
-
     setFeedbacks((prev) =>
       prev.map((f) =>
         f.id === feedback.id
@@ -190,7 +187,6 @@ export default function HomepageComponent() {
           : f
       )
     );
-
     try {
       if (isLiking) await FeedbackService.vote(feedback.id);
       else await FeedbackService.removeVote(feedback.id);
@@ -213,6 +209,8 @@ export default function HomepageComponent() {
   const totalPages = isAuthenticated
     ? Math.ceil(totalItems / itemsPerPage) || 1
     : 1;
+
+  // 👇 FUNÇÃO ADICIONADA (Correção do erro Cannot find name)
   const handlePageChange = (page: number) => {
     if (!isAuthenticated) return setShowLoginAlert(true);
     setCurrentPage(page);
@@ -227,17 +225,13 @@ export default function HomepageComponent() {
         </span>
         <div className="flex items-center gap-4">
           {currentUser ? (
-            <>
-              <div className="flex items-center gap-3 bg-gray-50 rounded-full pl-1 pr-4 py-1.5 border border-gray-200">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
-                  {currentUser.initial}
-                </div>
-                <div className="flex flex-col text-left">
-                  <span className="text-xs font-bold text-gray-700 leading-none">
-                    {currentUser.name}
-                  </span>
-                </div>
+            <div className="flex items-center gap-3 bg-gray-50 rounded-full pl-1 pr-4 py-1.5 border border-gray-200">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
+                {currentUser.initial}
               </div>
+              <span className="text-xs font-bold text-gray-700">
+                {currentUser.name}
+              </span>
               <Button
                 variant="ghost"
                 size="icon"
@@ -246,7 +240,7 @@ export default function HomepageComponent() {
               >
                 <LogOut className="h-5 w-5" />
               </Button>
-            </>
+            </div>
           ) : (
             <Button size="sm" onClick={() => signIn("google")}>
               Login
@@ -260,30 +254,6 @@ export default function HomepageComponent() {
           <h1 className="text-3xl font-black text-gray-900 tracking-tight">
             Feedbacks da Comunidade
           </h1>
-
-          {showLoginAlert && (
-            <div className="mx-auto max-w-md bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded shadow-md text-left">
-              <div className="flex">
-                <Lock className="h-5 w-5 text-yellow-500 shrink-0" />
-                <div className="ml-3">
-                  <h3 className="text-sm font-bold text-yellow-800">
-                    Acesso Restrito
-                  </h3>
-                  <p className="text-sm text-yellow-700 mt-1">
-                    Faça login para votar ou ver mais feedbacks.
-                  </p>
-                  <Button
-                    size="sm"
-                    className="mt-2 bg-yellow-600"
-                    onClick={() => signIn("google")}
-                  >
-                    Login
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-
           <div className="flex justify-center gap-3">
             {isAuthenticated && (
               <Button
@@ -300,7 +270,7 @@ export default function HomepageComponent() {
                   ? setShowLoginAlert(true)
                   : setIsCreateModalOpen(true)
               }
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-blue-600 hover:bg-blue-700 shadow-md"
             >
               <PlusCircle className="h-4 w-4 mr-2" /> Criar Feedback
             </Button>
@@ -318,7 +288,6 @@ export default function HomepageComponent() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-
             <div className="grid grid-cols-3 gap-2">
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                 <SelectTrigger className="w-full h-10 bg-white border-gray-200">
@@ -331,7 +300,6 @@ export default function HomepageComponent() {
                   <SelectItem value="bug">Bug</SelectItem>
                 </SelectContent>
               </Select>
-
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-full h-10 bg-white border-gray-200">
                   <SelectValue placeholder="Todos" />
@@ -341,17 +309,15 @@ export default function HomepageComponent() {
                   <SelectItem value="pending">Pendente</SelectItem>
                   <SelectItem value="accepted">Aceito</SelectItem>
                   <SelectItem value="in_progress">Em Andamento</SelectItem>
-                  <SelectItem value="done">Concluído</SelectItem>
                 </SelectContent>
               </Select>
-
               <Select value={sortFilter} onValueChange={setSortFilter}>
                 <SelectTrigger className="w-full h-10 bg-white border-gray-200">
                   <SelectValue placeholder="Recentes" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="date">Recentes</SelectItem>
-                  <SelectItem value="votes">Mais Votados</SelectItem>
+                  <SelectItem value="votes">Votos</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -362,23 +328,25 @@ export default function HomepageComponent() {
               <div className="text-center py-10 text-blue-500">
                 Carregando...
               </div>
-            ) : feedbacks.length === 0 ? (
-              <div className="text-center py-10 text-gray-500">
-                Nenhum feedback.
-              </div>
             ) : (
               feedbacks.map((stat) => {
                 const isOwner = currentUser?.id === stat.user_id;
                 const isPending = stat.status === "pending";
-
                 return (
                   <div
                     key={stat.id}
                     className="group bg-white shadow-sm rounded-lg border border-gray-100 p-4 hover:border-blue-300 transition-all"
                   >
                     <div className="flex justify-between items-center">
-                      <div className="flex flex-col gap-1 max-w-[70%]">
-                        <span className="text-sm font-bold text-gray-900 truncate">
+                      <div
+                        className={`flex flex-col gap-1 max-w-[70%] ${
+                          isAuthenticated ? "cursor-pointer" : ""
+                        }`}
+                        onClick={() =>
+                          isAuthenticated && setViewingDescription(stat)
+                        }
+                      >
+                        <span className="text-sm font-bold text-gray-900 truncate hover:text-blue-600 transition-colors">
                           {stat.title}
                         </span>
                         <div className="flex items-center gap-2 text-[10px]">
@@ -396,7 +364,6 @@ export default function HomepageComponent() {
                           </span>
                         </div>
                       </div>
-
                       <div className="flex items-center gap-3">
                         {isOwner && (
                           <div className="flex items-center gap-1">
@@ -406,7 +373,8 @@ export default function HomepageComponent() {
                                   size="icon"
                                   variant="ghost"
                                   className="h-8 w-8 text-blue-600"
-                                  onClick={() => {
+                                  onClick={(e) => {
+                                    e.stopPropagation();
                                     setEditingFeedback(stat);
                                     setIsEditModalOpen(true);
                                   }}
@@ -417,7 +385,10 @@ export default function HomepageComponent() {
                                   size="icon"
                                   variant="ghost"
                                   className="h-8 w-8 text-red-600"
-                                  onClick={() => setFeedbackToDelete(stat.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setFeedbackToDelete(stat.id);
+                                  }}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -427,9 +398,11 @@ export default function HomepageComponent() {
                             )}
                           </div>
                         )}
-
                         <button
-                          onClick={() => handleVote(stat)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleVote(stat);
+                          }}
                           className={`flex flex-col items-center px-3 py-1.5 rounded border min-w-12.5 transition-all ${
                             stat.has_voted
                               ? "bg-blue-50 border-blue-200 text-blue-600"
@@ -451,33 +424,30 @@ export default function HomepageComponent() {
                 );
               })
             )}
-
             {!isAuthenticated && !isLoading && (
-              /* 👇 Aplicada a classe bg-linear-to-r sugerida pelo Tailwind */
               <div className="mt-4 bg-linear-to-r from-blue-700 to-blue-900 rounded-lg p-5 text-white shadow-md border border-blue-400/20 flex flex-col items-center text-center">
                 <div className="flex items-center gap-2 mb-2">
                   <Lock className="h-4 w-4 text-blue-200" />
-                  <h3 className="text-sm font-bold tracking-wide uppercase">
+                  <h3 className="text-sm font-bold uppercase tracking-wide">
                     Área Restrita
                   </h3>
                 </div>
-                <p className="text-blue-100 text-xs mb-4 max-w-sm">
-                  Limite de visualização atingido.
-                  <span className="font-semibold text-white ml-1">
+                <p className="text-blue-100 text-xs mb-4">
+                  Limite de visualização atingido.{" "}
+                  <span className="font-semibold text-white">
                     Faça login para ver tudo!
                   </span>
                 </p>
                 <Button
                   onClick={() => signIn("google")}
                   size="sm"
-                  className="bg-white text-blue-800 hover:bg-blue-50 font-bold h-8 px-8"
+                  className="bg-white text-blue-800 hover:bg-blue-50 font-bold px-8"
                 >
                   Entrar com Google
                 </Button>
               </div>
             )}
           </div>
-
           {isAuthenticated && totalPages > 1 && (
             <div className="py-4">
               <Pagination>
@@ -489,6 +459,11 @@ export default function HomepageComponent() {
                         e.preventDefault();
                         handlePageChange(Math.max(1, currentPage - 1));
                       }}
+                      className={
+                        currentPage === 1
+                          ? "pointer-events-none opacity-50"
+                          : "cursor-pointer"
+                      }
                     />
                   </PaginationItem>
                   <PaginationItem>
@@ -501,6 +476,11 @@ export default function HomepageComponent() {
                         e.preventDefault();
                         handlePageChange(Math.min(totalPages, currentPage + 1));
                       }}
+                      className={
+                        currentPage === totalPages
+                          ? "pointer-events-none opacity-50"
+                          : "cursor-pointer"
+                      }
                     />
                   </PaginationItem>
                 </PaginationContent>
@@ -510,6 +490,19 @@ export default function HomepageComponent() {
         </div>
       </main>
 
+      <Dialog
+        open={!!viewingDescription}
+        onOpenChange={() => setViewingDescription(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{viewingDescription?.title}</DialogTitle>
+          </DialogHeader>
+          <div className="mt-4 text-sm text-gray-600 whitespace-pre-wrap bg-gray-50 p-4 rounded-lg border">
+            {viewingDescription?.description}
+          </div>
+        </DialogContent>
+      </Dialog>
       <CreateFeedback
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}

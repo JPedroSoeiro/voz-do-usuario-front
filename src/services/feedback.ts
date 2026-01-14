@@ -1,22 +1,52 @@
-// src/services/feedback.ts
 import { api } from "@/src/lib/api";
 import { Feedback, PaginatedResponse } from "../types/feedback";
 
 export const FeedbackService = {
   // Lista pública (para visitantes)
-  getAllFeedbacks: async (
-    params: any
-  ): Promise<PaginatedResponse<Feedback>> => {
-    const { data } = await api.get("/feedback", { params });
-    // Se o backend retornar array direto, transformamos em objeto
+  getAllFeedbacks: async ({
+    page = 1,
+    limit = 5,
+    search = "",
+    category = "all",
+    status = "all",
+    sort = "date",
+  }) => {
+    const offset = (page - 1) * limit;
+    const { data } = await api.get("/feedback", {
+      params: {
+        limit,
+        offset,
+        search: search || undefined,
+        category: category !== "all" ? category : undefined,
+        status: status !== "all" ? status : undefined,
+        sort,
+      },
+    });
     return Array.isArray(data)
-      ? { items: data, total: data.length, limit: 10, offset: 0 }
+      ? { items: data, total: data.length, limit, offset }
       : data;
   },
 
   // Feed logado (com has_voted)
-  getFeed: async (params: any): Promise<PaginatedResponse<Feedback>> => {
-    const { data } = await api.get("/feedback/feed", { params });
+  getFeed: async ({
+    page = 1,
+    limit = 5,
+    search = "",
+    category = "all",
+    status = "all",
+    sort = "date",
+  }) => {
+    const offset = (page - 1) * limit;
+    const { data } = await api.get("/feedback/feed", {
+      params: {
+        limit,
+        offset,
+        search: search || undefined,
+        category: category !== "all" ? category : undefined,
+        status: status !== "all" ? status : undefined,
+        sort,
+      },
+    });
     return data;
   },
 
@@ -32,29 +62,48 @@ export const FeedbackService = {
     search?: string;
     status?: string;
   }) => {
-    // Cálculo do offset para a paginação
     const offset = (page - 1) * limit;
 
     const { data } = await api.get("/feedback/mine", {
       params: {
         limit,
         offset,
-        // Só envia o parâmetro de busca se houver algo digitado
         search: search || undefined,
-        // Se o status for "all", enviamos undefined para o backend ignorar o filtro
         status: status !== "all" ? status : undefined,
       },
     });
 
-    // Tratamento de resposta (Array vs Objeto Paginado)
     if (Array.isArray(data)) {
-      return {
-        items: data,
-        total: data.length,
+      return { items: data, total: data.length, limit, offset };
+    }
+    return data;
+  },
+
+  // 👇 CORREÇÃO: Adicionado 'sort' à tipagem e aos parâmetros
+  getAllFeedbacksAdmin: async ({
+    page = 1,
+    limit = 6,
+    search = "",
+    status = "all",
+    sort = "date",
+  }: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    sort?: string;
+  }) => {
+    const offset = (page - 1) * limit;
+
+    const { data } = await api.get("/admin/feedback", {
+      params: {
         limit,
         offset,
-      };
-    }
+        search: search || undefined,
+        status: status !== "all" ? status : undefined,
+        sort,
+      },
+    });
 
     return data;
   },
@@ -68,7 +117,6 @@ export const FeedbackService = {
     return api.post("/feedback", payload);
   },
 
-  // 👇 CORREÇÃO: category agora é opcional (?) para não dar erro no MyFeedbacks
   update: async (
     id: string,
     payload: { title?: string; description?: string; category?: string }
@@ -85,14 +133,7 @@ export const FeedbackService = {
     return api.delete(`/feedback/${id}/vote`);
   },
 
-  // Moderação Admin
-  getAllFeedbacksAdmin: async (
-    params: any
-  ): Promise<PaginatedResponse<Feedback>> => {
-    const { data } = await api.get("/admin/feedback", { params });
-    return data;
-  },
-
+  // Moderação Admin (Status e Prioridade)
   updateStatus: async (id: string, status: string) => {
     return api.put(`/admin/feedback/${id}/status`, { status });
   },
