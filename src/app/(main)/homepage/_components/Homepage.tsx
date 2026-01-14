@@ -9,10 +9,8 @@ import {
   ThumbsUp,
   Edit,
   Trash2,
-  LayoutDashboard,
-  AlertTriangle,
   UserCircle,
-  ArrowRight,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -124,7 +122,6 @@ export default function HomepageComponent() {
   const fetchFeedbacks = useCallback(async () => {
     if (status === "loading") return;
     setIsLoading(true);
-
     try {
       let data;
       if (isAuthenticated) {
@@ -206,16 +203,15 @@ export default function HomepageComponent() {
     }
   };
 
-  const totalPages = isAuthenticated
-    ? Math.ceil(totalItems / itemsPerPage) || 1
-    : 1;
-
-  // 👇 FUNÇÃO ADICIONADA (Correção do erro Cannot find name)
   const handlePageChange = (page: number) => {
     if (!isAuthenticated) return setShowLoginAlert(true);
     setCurrentPage(page);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  const totalPages = isAuthenticated
+    ? Math.ceil(totalItems / itemsPerPage) || 1
+    : 1;
 
   return (
     <div className="min-h-screen bg-blue-50 flex flex-col">
@@ -254,6 +250,42 @@ export default function HomepageComponent() {
           <h1 className="text-3xl font-black text-gray-900 tracking-tight">
             Feedbacks da Comunidade
           </h1>
+
+          {/* 👇 BLOCO DO ALERTA DE LOGIN (REINSERIDO) */}
+          {showLoginAlert && (
+            <div className="mx-auto max-w-md bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded shadow-md text-left animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex items-start">
+                <Lock className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
+                <div className="ml-3">
+                  <h3 className="text-sm font-bold text-yellow-800">
+                    Acesso Restrito
+                  </h3>
+                  <p className="text-sm text-yellow-700 mt-1">
+                    Você precisa estar logado para criar sugestões ou votar nos
+                    feedbacks.
+                  </p>
+                  <div className="mt-3 flex gap-2">
+                    <Button
+                      size="sm"
+                      className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
+                      onClick={() => signIn("google")}
+                    >
+                      Entrar agora
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-yellow-800 hover:bg-yellow-100"
+                      onClick={() => setShowLoginAlert(false)}
+                    >
+                      Talvez depois
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-center gap-3">
             {isAuthenticated && (
               <Button
@@ -277,6 +309,7 @@ export default function HomepageComponent() {
           </div>
         </div>
 
+        {/* FILTROS E LISTAGEM ABAIXO... */}
         <div className="w-full max-w-3xl space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 w-full">
             <div className="relative w-full">
@@ -350,11 +383,11 @@ export default function HomepageComponent() {
                           {stat.title}
                         </span>
                         <div className="flex items-center gap-2 text-[10px]">
-                          <span className="font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 uppercase">
+                          <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 uppercase tracking-tighter">
                             {categoryMap[stat.category] || stat.category}
                           </span>
                           <span
-                            className={`px-1.5 py-0.5 rounded border uppercase ${
+                            className={`px-1.5 py-0.5 rounded border uppercase font-medium ${
                               stat.status === "done"
                                 ? "bg-green-50 text-green-700 border-green-100"
                                 : "bg-gray-100 text-gray-600 border-gray-200"
@@ -424,6 +457,7 @@ export default function HomepageComponent() {
                 );
               })
             )}
+
             {!isAuthenticated && !isLoading && (
               <div className="mt-4 bg-linear-to-r from-blue-700 to-blue-900 rounded-lg p-5 text-white shadow-md border border-blue-400/20 flex flex-col items-center text-center">
                 <div className="flex items-center gap-2 mb-2">
@@ -448,6 +482,7 @@ export default function HomepageComponent() {
               </div>
             )}
           </div>
+
           {isAuthenticated && totalPages > 1 && (
             <div className="py-4">
               <Pagination>
@@ -490,6 +525,7 @@ export default function HomepageComponent() {
         </div>
       </main>
 
+      {/* MODAL DE DESCRIÇÃO */}
       <Dialog
         open={!!viewingDescription}
         onOpenChange={() => setViewingDescription(null)}
@@ -503,6 +539,7 @@ export default function HomepageComponent() {
           </div>
         </DialogContent>
       </Dialog>
+
       <CreateFeedback
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
@@ -514,6 +551,7 @@ export default function HomepageComponent() {
         feedback={editingFeedback}
         onSuccess={fetchFeedbacks}
       />
+
       <AlertDialog
         open={!!feedbackToDelete}
         onOpenChange={() => setFeedbackToDelete(null)}
